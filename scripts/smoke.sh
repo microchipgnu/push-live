@@ -19,6 +19,14 @@ assert() { if [[ "$1" != "$2" ]]; then red "FAIL ($3): expected '$2', got '$1'";
 step "Wiping local Wrangler state for a clean run"
 rm -rf .wrangler/state
 
+# Make sure a SIGNING_KEY is available for wrangler dev. Locally devs keep one
+# in .dev.vars (gitignored); CI doesn't have that file, so seed the same value
+# the rest of the script assumes (matches the __cleanup Bearer below).
+if [[ ! -f .dev.vars ]] || ! grep -q '^SIGNING_KEY=' .dev.vars; then
+  step "Seeding .dev.vars with SIGNING_KEY for the test run"
+  echo 'SIGNING_KEY=rotate-me-in-production' >> .dev.vars
+fi
+
 step "Applying D1 migrations (local, managed)"
 bunx wrangler d1 migrations apply sloop-db --local 2>&1 | tail -15 \
   | grep -E "✅|✘|error" || true
