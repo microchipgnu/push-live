@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types.ts';
 import { PLANS } from '../lib/quotas.ts';
-import { escapeHtml } from '../ui/layout.ts';
+import { escapeHtml, shell } from '../ui/layout.ts';
 
 export const discoveryRouter = new Hono<{ Bindings: Env }>();
 
@@ -210,59 +210,37 @@ function renderDocs(host: string): string {
 
   const renderRow = (e: { method: string; path: string; summary: string; auth: boolean }) => `
     <tr>
-      <td><span class="m m-${e.method.toLowerCase()}">${e.method}</span></td>
-      <td class="code">${escapeHtml(e.path)}</td>
+      <td><span class="method method--${e.method.toLowerCase()}">${e.method}</span></td>
+      <td><code>${escapeHtml(e.path)}</code></td>
       <td>${escapeHtml(e.summary)}</td>
-      <td>${e.auth ? '<span class="auth">🔑</span>' : ''}</td>
+      <td class="right">${e.auth ? '<span class="tag tag--yellow">auth</span>' : ''}</td>
     </tr>`;
 
   const sections = tagOrder.map((tag) => {
     const rows = (byTag.get(tag) ?? []).map(renderRow).join('');
     if (!rows) return '';
     return `<section><h2 id="${tag.toLowerCase()}">${escapeHtml(tag)}</h2>
-      <table><thead><tr><th>Method</th><th>Path</th><th>Summary</th><th>Auth</th></tr></thead>
-      <tbody>${rows}</tbody></table></section>`;
+      <div class="card" style="padding:.4rem 1rem">
+      <table><thead><tr><th>Method</th><th>Path</th><th>Summary</th><th class="right">Auth</th></tr></thead>
+      <tbody>${rows}</tbody></table></div></section>`;
   }).join('');
 
-  return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Docs · push-live</title>
-<style>
-*{box-sizing:border-box}
-body{font:14.5px/1.55 ui-sans-serif,system-ui,sans-serif;color:#0a0a0a;background:#fff;margin:0}
-header{position:sticky;top:0;background:rgba(255,255,255,.95);backdrop-filter:blur(8px);border-bottom:1px solid #e4e4e7;padding:.8rem 1.5rem;display:flex;justify-content:space-between;align-items:center}
-header a{color:#0a0a0a;text-decoration:none}
-header .brand{font-weight:600;letter-spacing:-.01em}
-header nav a{margin-left:1.2rem;color:#52525b;font-size:13px}
-main{max-width:62rem;margin:0 auto;padding:2.5rem 1.5rem}
-h1{font-size:1.6rem;letter-spacing:-.02em;margin:0 0 .3rem}
-.muted{color:#71717a}
-.toc{font-size:13px;display:flex;flex-wrap:wrap;gap:.2rem .8rem;margin:1.2rem 0 2.5rem;padding-bottom:1.2rem;border-bottom:1px solid #e4e4e7}
-.toc a{color:#52525b;text-decoration:none}
-.toc a:hover{color:#0a0a0a}
-h2{font-size:1.05rem;margin:2.4rem 0 .8rem;letter-spacing:-.01em}
-table{width:100%;border-collapse:collapse;font-size:13.5px}
-th,td{padding:.5rem .5rem;text-align:left;border-bottom:1px solid #f4f4f5;vertical-align:top}
-th{color:#71717a;font-weight:500;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em}
-td.code{font:13px ui-monospace,Menlo,monospace;color:#0a0a0a}
-.m{display:inline-block;font:11px/1 ui-monospace,Menlo,monospace;font-weight:600;padding:.25em .45em;border-radius:3px;letter-spacing:.04em;min-width:3.5em;text-align:center}
-.m-get{background:#dbeafe;color:#1d4ed8}
-.m-post{background:#dcfce7;color:#166534}
-.m-put{background:#fef3c7;color:#a16207}
-.m-patch{background:#fae8ff;color:#7e22ce}
-.m-delete{background:#fee2e2;color:#b91c1c}
-.auth{color:#71717a;font-size:13px}
-pre{background:#0b0b0c;color:#fafafa;padding:1rem;border-radius:6px;overflow-x:auto;font:13px/1.55 ui-monospace,Menlo,monospace}
-.lede{color:#52525b;margin-bottom:2rem}
-</style></head>
-<body>
-<header>
-  <a class="brand" href="/">push-live</a>
-  <nav><a href="/pricing">Pricing</a><a href="/openapi.json">OpenAPI</a><a href="/llms.txt">llms.txt</a><a href="/signin">Sign in</a></nav>
-</header>
-<main>
-<h1>API reference</h1>
-<p class="lede">Auto-generated from <code class="code" style="background:#f4f4f5;padding:.1em .35em;border-radius:3px">/openapi.json</code>. Source of truth: <a href="/openapi.json">openapi.json</a>. Compact agent context: <a href="/llms.txt">llms.txt</a> / <a href="/llms-full.txt">llms-full.txt</a>.</p>
+  const docsExtra = `
+.method{display:inline-block;font:600 11px/1 var(--mono);padding:.32em .55em;border-radius:4px;letter-spacing:.04em;min-width:3.6em;text-align:center}
+.method--get{background:var(--pale-blue-bg);color:var(--pale-blue-fg)}
+.method--post{background:var(--pale-green-bg);color:var(--pale-green-fg)}
+.method--put{background:var(--pale-yellow-bg);color:var(--pale-yellow-fg)}
+.method--patch{background:var(--pale-violet-bg);color:var(--pale-violet-fg)}
+.method--delete{background:var(--pale-red-bg);color:var(--pale-red-fg)}
+.toc{display:flex;flex-wrap:wrap;gap:.3rem .9rem;margin:1.4rem 0 2.5rem;padding-bottom:1.4rem;border-bottom:1px solid var(--rule);font-size:13px}
+.toc a{color:var(--muted);text-decoration:none}
+.toc a:hover{color:var(--ink)}
+`;
+
+  const body = `
+<span class="eyebrow">API</span>
+<h1>Reference.</h1>
+<p class="lede">Auto-generated from <a href="/openapi.json">openapi.json</a>. Compact agent context lives at <a href="/llms.txt">llms.txt</a> and <a href="/llms-full.txt">llms-full.txt</a>.</p>
 
 <h2>Quick start</h2>
 <pre><code># 1. Create
@@ -280,10 +258,12 @@ curl -sS -X POST &lt;finalizeUrl&gt; -d '{"versionId":"&lt;v&gt;"}'</code></pre>
 curl -sS https://${escapeHtml(host)}/api/auth/agent/verify-code -d '{"email":"you@example.com","code":"XXXX-YYYY"}'</code></pre>
 
 <h2>Endpoints</h2>
-<p class="muted" style="font-size:12.5px">🔑 = requires <code class="code" style="background:#f4f4f5;padding:.1em .35em;border-radius:3px">Authorization: Bearer &lt;API_KEY&gt;</code>. Drive share tokens also accepted on <code class="code" style="background:#f4f4f5;padding:.1em .35em;border-radius:3px">/api/v1/drives/*</code> endpoints.</p>
+<p class="muted"><span class="tag tag--yellow">auth</span> means <code>Authorization: Bearer &lt;API_KEY&gt;</code> is required. Drive share tokens are also accepted on <code>/api/v1/drives/*</code> endpoints.</p>
 <div class="toc">${tagOrder.filter((t) => byTag.has(t)).map((t) => `<a href="#${t.toLowerCase()}">${escapeHtml(t)}</a>`).join('')}</div>
 ${sections}
-</main></body></html>`;
+`;
+
+  return shell('Docs · push-live', body, { extraStyle: docsExtra });
 }
 
 // ---------------- Builders (kept in this file to make them easy to edit) ----------------

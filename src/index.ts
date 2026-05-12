@@ -12,6 +12,7 @@ import { serveSite } from './serve.ts';
 import { verifyTicket } from './lib/upload-ticket.ts';
 import { runCleanup } from './cleanup.ts';
 import { withRequestLog, logLine } from './lib/log.ts';
+import { head, REVEAL_SCRIPT } from './ui/layout.ts';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -159,148 +160,193 @@ async function resolveLink(
   return null;
 }
 
-const LANDING_HTML = (host: string) => `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>push-live — static hosting + private storage for agents</title>
-<meta name="description" content="Instant static hosting and versioned file storage built for AI agents. Self-hosted on Cloudflare.">
-<style>
-:root{--bg:#fff;--ink:#0a0a0a;--muted:#52525b;--rule:#e4e4e7;--accent:#0b0b0c;--soft:#fafafa}
-*{box-sizing:border-box}
-body{font:15px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg);margin:0}
-header{position:sticky;top:0;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--rule);z-index:10}
-header .row{max-width:64rem;margin:0 auto;padding:.85rem 1.5rem;display:flex;justify-content:space-between;align-items:center}
-header a{color:var(--ink);text-decoration:none;font-size:14px}
-header .brand{font-weight:600;letter-spacing:-.01em}
-header nav a{margin-left:1.4rem;color:var(--muted)}
-header nav a:hover{color:var(--ink)}
-header .cta{margin-left:1.4rem;background:var(--ink);color:#fff;padding:.45rem .85rem;border-radius:4px;font-weight:500}
-section{max-width:64rem;margin:0 auto;padding:0 1.5rem}
-.hero{padding:5rem 1.5rem 4rem;text-align:center}
-.hero h1{font:600 2.6rem/1.05 ui-sans-serif,system-ui,sans-serif;letter-spacing:-.035em;margin:0 0 1rem}
-.hero .sub{font-size:1.05rem;color:var(--muted);max-width:36rem;margin:0 auto 2rem}
-.hero .ctas{display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap;margin-bottom:3rem}
-.btn{display:inline-block;padding:.7rem 1.2rem;border-radius:4px;text-decoration:none;font-size:14px;font-weight:500;border:0;cursor:pointer}
-.btn.primary{background:var(--ink);color:#fff}
-.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--rule)}
-.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;max-width:56rem;margin:0 auto;text-align:left}
-.step{background:var(--soft);border:1px solid var(--rule);border-radius:6px;padding:1.25rem}
-.step .n{color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
-.step h3{font-size:.95rem;margin:.3rem 0 .75rem;font-weight:600}
-.step pre{margin:0;background:var(--accent);color:#fafafa;padding:.85rem;border-radius:4px;font:12px/1.55 ui-monospace,Menlo,monospace;overflow-x:auto}
-.features{padding:4rem 1.5rem;border-top:1px solid var(--rule)}
-.features h2{font-size:1.4rem;letter-spacing:-.02em;margin:0 0 .4rem;text-align:center}
-.features .lede{text-align:center;color:var(--muted);margin:0 0 2.5rem}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem}
-.feat{padding:1.25rem 1.4rem;border:1px solid var(--rule);border-radius:6px}
-.feat h4{margin:0 0 .35rem;font-size:.95rem;font-weight:600}
-.feat p{margin:0;color:var(--muted);font-size:13.5px}
-.pricing{padding:4rem 1.5rem;border-top:1px solid var(--rule);text-align:center}
-.pricing h2{font-size:1.4rem;letter-spacing:-.02em;margin:0 0 1.5rem}
-.tier-row{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;max-width:56rem;margin:0 auto}
-.tier{padding:1.3rem 1rem;border:1px solid var(--rule);border-radius:6px}
-.tier .name{font-weight:600;font-size:.95rem}
-.tier .price{font:600 1.5rem ui-monospace,Menlo,monospace;margin:.5rem 0;letter-spacing:-.02em}
-.tier .feat-list{color:var(--muted);font-size:12.5px;text-align:left;margin:.75rem 0 0;padding:0;list-style:none;line-height:1.7}
-footer{border-top:1px solid var(--rule);padding:2.5rem 1.5rem;color:var(--muted);font-size:13px;text-align:center;margin-top:4rem}
-footer a{color:var(--muted);margin:0 .6rem}
-code{font:13px ui-monospace,Menlo,monospace;background:#f4f4f5;padding:.1em .35em;border-radius:3px}
-@media (max-width: 720px){
-  .steps,.grid,.tier-row{grid-template-columns:1fr}
-  .hero h1{font-size:2rem}
+const LANDING_EXTRA = `
+.hero{position:relative;padding:6rem 0 4rem;text-align:left;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:-10% -10% auto auto;width:42rem;height:42rem;pointer-events:none;background:radial-gradient(closest-side,rgba(225,243,254,.55),rgba(225,243,254,0) 70%);z-index:0;animation:drift 28s ease-in-out infinite alternate}
+.hero::after{content:"";position:absolute;inset:auto auto -20% -10%;width:34rem;height:34rem;pointer-events:none;background:radial-gradient(closest-side,rgba(251,243,219,.4),rgba(251,243,219,0) 70%);z-index:0;animation:drift 36s ease-in-out infinite alternate-reverse}
+.hero__inner{position:relative;z-index:1;max-width:42rem}
+.hero h1{font-size:3.6rem;line-height:1;margin:.4rem 0 1.1rem;letter-spacing:-.025em}
+.hero h1 em{font-style:italic;color:var(--muted);display:block}
+.hero .lede{font-size:1.1rem;line-height:1.55;margin:0 0 1.8rem}
+.hero__ctas{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:2rem}
+.hero__shortcut{display:flex;align-items:center;gap:.5rem;color:var(--muted);font:12.5px/1 var(--sans);flex-wrap:wrap}
+.hero__shortcut .dot{width:3px;height:3px;border-radius:50%;background:var(--muted-soft)}
+
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;margin:0 0 1.5rem}
+.section-head h2{margin:0}
+.section-head .muted{margin:0}
+
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+.step{background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:1.5rem 1.5rem 1.25rem;display:flex;flex-direction:column;min-height:0}
+.step__head{display:flex;align-items:center;gap:.55rem;margin-bottom:.4rem}
+.step__n{font:500 11px/1 var(--mono);color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.step h3{margin:0 0 .9rem;font-size:1.1rem;font-family:var(--serif);letter-spacing:-.015em}
+.step pre{flex:1;font-size:11.5px}
+
+.bento{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:minmax(150px,auto);gap:1rem}
+.bento__cell{background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:1.5rem 1.75rem;display:flex;flex-direction:column;gap:.4rem;transition:box-shadow 220ms ease,transform 220ms ease,border-color 220ms ease}
+.bento__cell:hover{box-shadow:0 2px 14px rgba(17,17,17,.035);border-color:var(--rule-strong)}
+.bento__cell h3{font-family:var(--sans);font-weight:600;font-size:.98rem;margin:0;letter-spacing:-.005em}
+.bento__cell p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.6}
+.bento__cell--wide{grid-column:span 2}
+.bento__cell--tall{grid-row:span 2}
+.bento__cell--accent{background:linear-gradient(180deg,var(--pale-blue-bg) 0%,var(--surface) 60%)}
+.bento__tag{align-self:flex-start;margin-bottom:.2rem}
+
+.tiers{display:grid;grid-template-columns:repeat(4,1fr);gap:.85rem}
+.tier{background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:1.4rem 1.3rem;display:flex;flex-direction:column;gap:.4rem}
+.tier__name{font:600 13px/1 var(--sans);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.tier__price{font:400 2rem/1 var(--serif);letter-spacing:-.02em;color:var(--ink);margin:.3rem 0 .4rem}
+.tier__price span{font:500 12px/1 var(--sans);color:var(--muted);margin-left:.15rem}
+.tier ul{list-style:none;padding:0;margin:.3rem 0 0;color:var(--muted);font-size:13px;line-height:1.85}
+.tier ul li::before{content:"·";color:var(--muted-soft);margin-right:.5rem}
+
+@keyframes drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-4%,3%,0)}}
+@media (max-width:840px){
+  .steps,.bento,.tiers{grid-template-columns:1fr}
+  .bento__cell--wide,.bento__cell--tall{grid-column:auto;grid-row:auto}
+  .hero h1{font-size:2.6rem}
 }
-</style></head>
+`;
+
+const LANDING_HTML = (host: string) => `<!doctype html>
+<html lang="en"><head>${head('push-live — static hosting + private storage for agents', LANDING_EXTRA)}
+<meta name="description" content="Three HTTP calls and your agent has a live site. Versioned drives, hash-skip deploys, password and paywall gates. Self-hosted on Cloudflare.">
+</head>
 <body>
-<header><div class="row">
-  <a class="brand" href="/">push-live</a>
-  <nav>
+<header class="nav"><div class="nav__inner">
+  <a class="nav__brand" href="/">push<em>·</em>live</a>
+  <div class="nav__links">
     <a href="/docs">Docs</a>
     <a href="/pricing">Pricing</a>
     <a href="/openapi.json">API</a>
-    <a class="cta" href="/signin">Sign in</a>
-  </nav>
+    <a class="nav__cta" href="/signin">Sign in</a>
+  </div>
 </div></header>
 
-<section class="hero">
-  <h1>Static hosting + private storage,<br>built for agents.</h1>
-  <p class="sub">Three HTTP calls and your agent has a live site at <code>&lt;slug&gt;.${host}</code>. Anonymous in 24h, permanent with a key. Self-hosted on Cloudflare Workers + R2 + D1.</p>
-  <div class="ctas">
-    <a class="btn primary" href="/signin">Mint an API key</a>
-    <a class="btn ghost" href="/docs">Read the docs</a>
-  </div>
+<main class="wide">
+  <section class="hero">
+    <div class="hero__inner">
+      <span class="eyebrow">Static hosting + private storage</span>
+      <h1>Three calls.<em>One live site.</em></h1>
+      <p class="lede">Hand your agent an HTTP endpoint and it ships a real URL — anonymous for 24 hours, permanent with a key. Versioned drives, hash-skip deploys, paywalls, password gates. Self-hosted on Cloudflare Workers, R2, D1.</p>
+      <div class="hero__ctas">
+        <a class="btn" href="/signin">Mint an API key</a>
+        <a class="btn btn--ghost" href="/docs">Read the docs</a>
+      </div>
+      <div class="hero__shortcut">
+        <kbd>POST</kbd> /publish <span class="dot"></span>
+        <kbd>PUT</kbd> upload URL <span class="dot"></span>
+        <kbd>POST</kbd> /finalize <span class="dot"></span>
+        <code>&lt;slug&gt;.${escapeHostForDisplay(host)}</code>
+      </div>
+    </div>
+  </section>
 
-  <div class="steps">
-    <div class="step">
-      <div class="n">01 · Create</div>
-      <h3>Manifest → presigned URLs</h3>
-<pre>POST /api/v1/publish
+  <section class="reveal" style="margin-top:5rem">
+    <div class="section-head"><h2>The full flow, three calls.</h2><p class="muted">No SDK. No build step. Plain HTTP.</p></div>
+    <div class="steps">
+      <article class="step">
+        <div class="step__head"><span class="step__n">01</span><span class="tag tag--blue">Create</span></div>
+        <h3>Manifest in, presigned URLs out</h3>
+<pre><code>POST /api/v1/publish
 {
   "files": [
     { "path": "index.html",
       "size": 1234,
       "contentType": "text/html",
-      "hash": "..." }
+      "hash": "…" }
   ]
-}</pre>
-    </div>
-    <div class="step">
-      <div class="n">02 · Upload</div>
-      <h3>Direct to R2, in parallel</h3>
-<pre>PUT &lt;upload.uploads[i].url&gt;
+}</code></pre>
+      </article>
+      <article class="step">
+        <div class="step__head"><span class="step__n">02</span><span class="tag tag--green">Upload</span></div>
+        <h3>Direct to R2, in parallel</h3>
+<pre><code>PUT &lt;upload.uploads[i].url&gt;
 Content-Type: text/html
-&lt;file bytes&gt;</pre>
-    </div>
-    <div class="step">
-      <div class="n">03 · Finalize</div>
-      <h3>Atomic version flip</h3>
-<pre>POST &lt;finalizeUrl&gt;
-{ "versionId": "01J..." }
+&lt;file bytes&gt;</code></pre>
+      </article>
+      <article class="step">
+        <div class="step__head"><span class="step__n">03</span><span class="tag tag--yellow">Finalize</span></div>
+        <h3>Atomic version flip</h3>
+<pre><code>POST &lt;finalizeUrl&gt;
+{ "versionId": "01J…" }
 
-→ https://&lt;slug&gt;.${host}/</pre>
+→ https://&lt;slug&gt;.${escapeHostForDisplay(host)}/</code></pre>
+      </article>
     </div>
-  </div>
-</section>
+  </section>
 
-<section class="features">
-  <h2>What you get</h2>
-  <p class="lede">Static hosting + private file storage built for agents. Runs entirely on your Cloudflare account.</p>
-  <div class="grid">
-    <div class="feat"><h4>Sites</h4><p>Static HTML/JS/CSS/PDF/assets at <code>slug.${host}</code> or a custom domain via Cloudflare for SaaS.</p></div>
-    <div class="feat"><h4>Drives</h4><p>Versioned private storage with scoped share tokens — read/write, path-prefixed, TTL'd.</p></div>
-    <div class="feat"><h4>Hash-skip deploys</h4><p>SHA-256 content addressing means unchanged files are skipped on re-publish.</p></div>
-    <div class="feat"><h4>Password &amp; paywall</h4><p>Gate any site with a password or an on-chain stablecoin payment. 402 + session flow for agents.</p></div>
-    <div class="feat"><h4>Proxy routes</h4><p>Ship a <code>proxy.json</code>; <code>\${VAR}</code> values are pulled from an encrypted variables store at request time.</p></div>
-    <div class="feat"><h4>Agent-native</h4><p>Anonymous publish, email-code key flow, <code>llms.txt</code>, OpenAPI, agent.json — discoverable end-to-end.</p></div>
-  </div>
-</section>
+  <section class="reveal" style="margin-top:5rem">
+    <div class="section-head"><h2>What you actually get.</h2><p class="muted">Six primitives, one Worker.</p></div>
+    <div class="bento">
+      <article class="bento__cell bento__cell--wide bento__cell--accent">
+        <span class="tag tag--blue bento__tag">Sites</span>
+        <h3>Static hosting at the edge</h3>
+        <p>HTML, JS, CSS, PDFs, assets — served from <code>&lt;slug&gt;.${escapeHostForDisplay(host)}</code>, a custom domain via Cloudflare for SaaS, or a path-mounted handle. Conditional GETs, range requests, SPA mode, optional fork button.</p>
+      </article>
+      <article class="bento__cell">
+        <span class="tag tag--green bento__tag">Drives</span>
+        <h3>Versioned private storage</h3>
+        <p>Scoped share tokens — read or write, path-prefixed, TTL'd. Every mutation snapshots history.</p>
+      </article>
+      <article class="bento__cell">
+        <span class="tag tag--violet bento__tag">CAS</span>
+        <h3>Hash-skip deploys</h3>
+        <p>Content-addressed by SHA-256. Re-publishing a site only uploads bytes that actually changed.</p>
+      </article>
+      <article class="bento__cell">
+        <span class="tag tag--yellow bento__tag">Gates</span>
+        <h3>Password &amp; stablecoin paywall</h3>
+        <p>Lock any site with a password or a 402 + session flow that settles on-chain in USDC.</p>
+      </article>
+      <article class="bento__cell">
+        <span class="tag tag--red bento__tag">Proxy</span>
+        <h3>Variable-templated routes</h3>
+        <p>Drop a <code>proxy.json</code>; <code>\${VAR}</code> values are pulled from your encrypted variables store at request time.</p>
+      </article>
+      <article class="bento__cell">
+        <span class="tag bento__tag">Agent-native</span>
+        <h3>Discoverable end to end</h3>
+        <p>Email-code key flow, <code>llms.txt</code>, OpenAPI, <code>agent.json</code> — your agent finds and uses this without scraping.</p>
+      </article>
+    </div>
+  </section>
 
-<section class="pricing">
-  <h2>Plans <a href="/pricing" style="font-size:13px;color:var(--muted);font-weight:400;text-decoration:none;letter-spacing:0">→ full table</a></h2>
-  <div class="tier-row">
-    <div class="tier">
-      <div class="name">Anonymous</div>
-      <div class="price">$0</div>
-      <ul class="feat-list"><li>24h sites</li><li>250 MB max file</li><li>60 publishes/hour</li></ul>
+  <section class="reveal" style="margin-top:5rem">
+    <div class="section-head"><h2>Plans.</h2><a class="muted" href="/pricing">Full table →</a></div>
+    <div class="tiers">
+      <article class="tier">
+        <div class="tier__name">Anonymous</div>
+        <div class="tier__price">$0</div>
+        <ul><li>24 h sites</li><li>250 MB max file</li><li>60 publishes / hour</li></ul>
+      </article>
+      <article class="tier">
+        <div class="tier__name">Free</div>
+        <div class="tier__price">$0</div>
+        <ul><li>10 GB storage</li><li>500 sites</li><li>1 drive, 1 domain</li></ul>
+      </article>
+      <article class="tier">
+        <div class="tier__name">Hobby</div>
+        <div class="tier__price">$4<span>/mo</span></div>
+        <ul><li>500 GB storage</li><li>1 000 sites</li><li>5 drives, 5 domains</li></ul>
+      </article>
+      <article class="tier">
+        <div class="tier__name">Developer</div>
+        <div class="tier__price">$20<span>/mo</span></div>
+        <ul><li>2 TB storage</li><li>Unlimited sites</li><li>10 drives, 20 domains</li></ul>
+      </article>
     </div>
-    <div class="tier">
-      <div class="name">Free</div>
-      <div class="price">$0</div>
-      <ul class="feat-list"><li>10 GB storage</li><li>500 sites</li><li>1 drive, 1 domain</li></ul>
-    </div>
-    <div class="tier">
-      <div class="name">Hobby</div>
-      <div class="price">$4<span style="font-size:12px;color:var(--muted)">/mo</span></div>
-      <ul class="feat-list"><li>500 GB storage</li><li>1000 sites</li><li>5 drives, 5 domains</li></ul>
-    </div>
-    <div class="tier">
-      <div class="name">Developer</div>
-      <div class="price">$20<span style="font-size:12px;color:var(--muted)">/mo</span></div>
-      <ul class="feat-list"><li>2 TB storage</li><li>Unlimited sites</li><li>10 drives, 20 domains</li></ul>
-    </div>
-  </div>
-</section>
+  </section>
+</main>
 
 <footer>
-  <a href="/docs">Docs</a> · <a href="/pricing">Pricing</a> · <a href="/openapi.json">OpenAPI</a> · <a href="/llms.txt">llms.txt</a><br>
-  <small>Source-available · Cloudflare Workers + R2 + D1.</small>
+  <a href="/docs">Docs</a> · <a href="/pricing">Pricing</a> · <a href="/openapi.json">OpenAPI</a> · <a href="/llms.txt">llms.txt</a>
+  <div style="margin-top:.6rem;font-size:12px">Source-available. Cloudflare Workers, R2, D1.</div>
 </footer>
+<script>${REVEAL_SCRIPT}</script>
 </body></html>`;
+
+function escapeHostForDisplay(host: string): string {
+  return host.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[c]!);
+}

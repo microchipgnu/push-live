@@ -43,7 +43,7 @@ pagesRouter.get('/pricing', (c) => {
     const limit = (n: number) => (n === Number.POSITIVE_INFINITY ? '∞' : String(n));
     return `<tr>
       <td><strong>${escapeHtml(p.name)}</strong></td>
-      <td>${costFor(p.name)}</td>
+      <td><code>${costFor(p.name)}</code></td>
       <td>${fmt(p.maxStorageBytes)}</td>
       <td>${limit(p.maxSites)}</td>
       <td>${limit(p.maxDrives)}</td>
@@ -54,9 +54,10 @@ pagesRouter.get('/pricing', (c) => {
     </tr>`;
   }).join('');
   const body = `
-<h1>Pricing</h1>
-<p>Self-hosted on Cloudflare. These tiers are baked into <code class="code">src/lib/quotas.ts</code> — edit to fit your offering.</p>
-<div class="card">
+<span class="eyebrow">Plans</span>
+<h1>Pricing.</h1>
+<p class="lede">Self-hosted on Cloudflare. These tiers are baked into <code>src/lib/quotas.ts</code> — edit to fit your offering.</p>
+<div class="card" style="overflow-x:auto">
 <table>
 <thead><tr><th>Plan</th><th>Cost</th><th>Storage</th><th>Sites</th><th>Drives</th><th>Domains</th><th>Max file</th><th>History</th><th>Publishes</th></tr></thead>
 <tbody>${rows}</tbody>
@@ -196,10 +197,13 @@ pagesRouter.post('/dashboard/keys', async (c) => {
     .bind(keyId, userId, tokenHash, token.slice(0, 12), label, Date.now())
     .run();
   return c.html(shell('New API key · push-live', `
-    <h1>New API key</h1>
-    <p>Save this now — it won't be shown again.</p>
-    <pre class="code" style="background:#0b0b0c;color:#fafafa;padding:1rem;border-radius:6px;overflow-x:auto">${escapeHtml(token)}</pre>
-    <p><a class="btn" href="/dashboard">Back to dashboard</a></p>
+    <span class="eyebrow">API key</span>
+    <h1>One-time reveal.</h1>
+    <p class="lede">Save this now — push-live keeps a hash, not the secret. It won't be shown again.</p>
+    <div class="card" style="padding:1rem 1.25rem">
+      <pre><code>${escapeHtml(token)}</code></pre>
+    </div>
+    <p><a class="btn btn--ghost" href="/dashboard">← Back to dashboard</a></p>
   `, { user: 'signed in' }));
 });
 
@@ -353,29 +357,35 @@ type DomainRow = { domain: string; status: string; ssl_status: string | null; cr
 function renderSignin(step: 'email' | 'code', email: string, err?: string): string {
   if (step === 'email') {
     return `
-<h1>Sign in</h1>
-<p>Enter your email and we'll send you a one-time code.</p>
+<div style="max-width:24rem">
+<span class="eyebrow">Sign in</span>
+<h1>Welcome back.</h1>
+<p class="lede">Enter your email and we'll send a one-time code. No password, no provider.</p>
 ${err ? `<div class="alert error">${escapeHtml(err)}</div>` : ''}
-<form method="post" class="card" style="max-width:24rem">
+<form method="post" class="card stack-sm">
   <input type="hidden" name="action" value="request">
-  <label style="display:block;margin-bottom:.4rem;font-size:13px">Email</label>
-  <input type="email" name="email" autofocus required value="${escapeHtml(email)}">
-  <button type="submit" style="margin-top:.8rem;width:100%">Send code</button>
-</form>`;
+  <label class="label" for="signin-email">Email</label>
+  <input id="signin-email" type="email" name="email" autofocus required value="${escapeHtml(email)}" placeholder="you@example.com">
+  <button type="submit" class="btn btn--block" style="margin-top:.8rem">Send code</button>
+</form>
+</div>`;
   }
   return `
-<h1>Enter your code</h1>
-<p>We emailed a code to <strong>${escapeHtml(email)}</strong>.</p>
-${err === 'invalid' ? `<div class="alert error">Invalid code.</div>` : ''}
+<div style="max-width:24rem">
+<span class="eyebrow">One more step</span>
+<h1>Check your inbox.</h1>
+<p class="lede">We emailed a code to <strong>${escapeHtml(email)}</strong>. It expires in ten minutes.</p>
+${err === 'invalid' ? `<div class="alert error">That code didn't match. Try again.</div>` : ''}
 ${err === 'expired' ? `<div class="alert error">Code expired. Request a new one.</div>` : ''}
-<form method="post" class="card" style="max-width:24rem">
+<form method="post" class="card stack-sm">
   <input type="hidden" name="action" value="verify">
   <input type="hidden" name="email" value="${escapeHtml(email)}">
-  <label style="display:block;margin-bottom:.4rem;font-size:13px">Code</label>
-  <input type="text" name="code" autofocus required style="letter-spacing:.1em">
-  <button type="submit" style="margin-top:.8rem;width:100%">Verify</button>
+  <label class="label" for="signin-code">Code</label>
+  <input id="signin-code" type="text" name="code" autofocus required autocomplete="one-time-code" style="font-family:var(--mono);letter-spacing:.15em;text-align:center;font-size:16px" placeholder="XXXX-XXXX">
+  <button type="submit" class="btn btn--block" style="margin-top:.8rem">Verify</button>
 </form>
-<p style="margin-top:1rem"><a href="/signin">← Use a different email</a></p>`;
+<p style="margin-top:1rem;font-size:13px"><a href="/signin">← Use a different email</a></p>
+</div>`;
 }
 
 function renderDashboard(data: {
@@ -388,70 +398,90 @@ function renderDashboard(data: {
   domains: DomainRow[];
   apex: string;
 }): string {
+  const dateOnly = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
   const sitesRows = data.sites.length === 0
-    ? `<tr><td colspan="4" class="muted">No sites yet. Publish one with <code class="code">POST /api/v1/publish</code>.</td></tr>`
+    ? `<tr><td colspan="4" class="muted">No sites yet. Publish one with <code>POST /api/v1/publish</code>.</td></tr>`
     : data.sites.map((s) => `
         <tr>
-          <td><a href="https://${escapeHtml(s.slug)}.${escapeHtml(data.apex)}/" target="_blank">${escapeHtml(s.slug)}</a> ${s.spa_mode ? `<span class="muted">spa</span>` : ''} ${s.forkable ? `<span class="muted">fork</span>` : ''}</td>
+          <td>
+            <a href="https://${escapeHtml(s.slug)}.${escapeHtml(data.apex)}/" target="_blank" rel="noopener">${escapeHtml(s.slug)}</a>
+            ${s.spa_mode ? `<span class="tag tag--violet" style="margin-left:.4rem">spa</span>` : ''}
+            ${s.forkable ? `<span class="tag tag--green" style="margin-left:.3rem">fork</span>` : ''}
+          </td>
           <td>${escapeHtml(s.viewer_title ?? '')}</td>
-          <td class="muted">${new Date(s.updated_at).toISOString().slice(0,10)}</td>
-          <td style="text-align:right">
+          <td class="muted">${dateOnly(s.updated_at)}</td>
+          <td class="right">
             <form method="post" action="/dashboard/sites/${encodeURIComponent(s.slug)}/delete" style="display:inline" onsubmit="return confirm('Delete ${escapeHtml(s.slug)}?')">
-              <button class="btn danger secondary" type="submit" style="background:#fff;color:#dc2626;border:1px solid #fecaca">Delete</button>
+              <button class="btn btn--danger btn--sm" type="submit">Delete</button>
             </form>
           </td>
         </tr>`).join('');
   const keysRows = data.keys.length === 0
     ? `<tr><td colspan="3" class="muted">No API keys yet.</td></tr>`
     : data.keys.map((k) => `
-        <tr><td class="code">${escapeHtml(k.prefix)}…</td><td>${escapeHtml(k.label ?? '')}</td><td class="muted">${new Date(k.created_at).toISOString().slice(0,10)}</td></tr>`).join('');
+        <tr><td><code>${escapeHtml(k.prefix)}…</code></td><td>${escapeHtml(k.label ?? '')}</td><td class="muted">${dateOnly(k.created_at)}</td></tr>`).join('');
   const drivesRows = data.drives.length === 0
-    ? `<tr><td colspan="3" class="muted">No drives. Create one with <code class="code">POST /api/v1/drives</code>.</td></tr>`
+    ? `<tr><td colspan="3" class="muted">No drives. Create one with <code>POST /api/v1/drives</code>.</td></tr>`
     : data.drives.map((d) => `
-        <tr><td><code class="code">${escapeHtml(d.id)}</code></td><td>${escapeHtml(d.name)}${d.is_default ? ' <span class="muted">(default)</span>' : ''}</td><td class="muted">${new Date(d.created_at).toISOString().slice(0,10)}</td></tr>`).join('');
+        <tr><td><code>${escapeHtml(d.id)}</code></td><td>${escapeHtml(d.name)}${d.is_default ? ` <span class="tag tag--blue" style="margin-left:.3rem">default</span>` : ''}</td><td class="muted">${dateOnly(d.created_at)}</td></tr>`).join('');
   const varsRows = data.variables.length === 0
     ? `<tr><td colspan="3" class="muted">No variables.</td></tr>`
     : data.variables.map((v) => `
-        <tr><td class="code">${escapeHtml(v.name)}</td><td class="muted">${escapeHtml(v.pin_origin ?? '')}</td><td class="muted">${new Date(v.updated_at).toISOString().slice(0,10)}</td></tr>`).join('');
+        <tr><td><code>${escapeHtml(v.name)}</code></td><td class="muted">${escapeHtml(v.pin_origin ?? '')}</td><td class="muted">${dateOnly(v.updated_at)}</td></tr>`).join('');
+  const domainStatusTag = (status: string) => {
+    if (status === 'active' || status === 'verified') return `<span class="tag tag--green">${escapeHtml(status)}</span>`;
+    if (status === 'pending') return `<span class="tag tag--yellow">${escapeHtml(status)}</span>`;
+    return `<span class="tag">${escapeHtml(status)}</span>`;
+  };
   const domainsRows = data.domains.length === 0
     ? `<tr><td colspan="4" class="muted">No custom domains.</td></tr>`
     : data.domains.map((d) => `
-        <tr><td>${escapeHtml(d.domain)}</td><td>${escapeHtml(d.status)}</td><td>${escapeHtml(d.ssl_status ?? '')}</td><td class="muted">${new Date(d.created_at).toISOString().slice(0,10)}</td></tr>`).join('');
+        <tr><td><code>${escapeHtml(d.domain)}</code></td><td>${domainStatusTag(d.status)}</td><td class="muted">${escapeHtml(d.ssl_status ?? '')}</td><td class="muted">${dateOnly(d.created_at)}</td></tr>`).join('');
+
+  const walletShort = data.user.wallet
+    ? `${escapeHtml(data.user.wallet.slice(0, 6))}…${escapeHtml(data.user.wallet.slice(-4))}`
+    : null;
 
   return `
-<h1>Dashboard</h1>
-<p class="muted">${escapeHtml(data.user.email)} · plan: ${escapeHtml(data.user.plan)}${data.handle ? ` · handle: <code class="code">${escapeHtml(data.handle)}</code>` : ''}${data.user.wallet ? ` · wallet: <code class="code">${escapeHtml(data.user.wallet.slice(0,6))}…${escapeHtml(data.user.wallet.slice(-4))}</code>` : ''}</p>
-
-<div class="card">
-<h2 style="margin-top:0">Sites</h2>
-<table><thead><tr><th>Slug</th><th>Title</th><th>Updated</th><th></th></tr></thead><tbody>${sitesRows}</tbody></table>
+<span class="eyebrow">Dashboard</span>
+<h1>${escapeHtml(data.user.email)}</h1>
+<div class="cluster" style="margin:0 0 2rem;color:var(--muted);font-size:13px">
+  <span class="tag tag--blue">${escapeHtml(data.user.plan)}</span>
+  ${data.handle ? `<span>handle <code>${escapeHtml(data.handle)}</code></span>` : ''}
+  ${walletShort ? `<span>wallet <code>${walletShort}</code></span>` : ''}
 </div>
 
 <div class="card">
-<h2 style="margin-top:0">Drives</h2>
+<h2>Sites</h2>
+<table><thead><tr><th>Slug</th><th>Title</th><th>Updated</th><th class="right"></th></tr></thead><tbody>${sitesRows}</tbody></table>
+</div>
+
+<div class="card">
+<h2>Drives</h2>
 <table><thead><tr><th>ID</th><th>Name</th><th>Created</th></tr></thead><tbody>${drivesRows}</tbody></table>
-<form method="post" action="/dashboard/drives" class="row" style="margin-top:1rem">
+<form method="post" action="/dashboard/drives" class="row" style="margin-top:1.2rem">
   <input type="text" name="name" placeholder="Drive name" style="flex:1;max-width:18rem">
-  <label class="muted" style="font-size:12px"><input type="checkbox" name="isDefault"> default</label>
+  <label class="cluster muted" style="font-size:12.5px"><input type="checkbox" name="isDefault"> default</label>
   <button type="submit">Create</button>
 </form>
 </div>
 
 <div class="card">
-<h2 style="margin-top:0">Domains</h2>
+<h2>Domains</h2>
 <table><thead><tr><th>Domain</th><th>Status</th><th>SSL</th><th>Added</th></tr></thead><tbody>${domainsRows}</tbody></table>
-<form method="post" action="/dashboard/domains" class="row" style="margin-top:1rem">
+<form method="post" action="/dashboard/domains" class="row" style="margin-top:1.2rem">
   <input type="text" name="domain" placeholder="example.com" style="flex:1;max-width:18rem">
   <button type="submit">Add</button>
 </form>
-<p class="muted" style="font-size:12px;margin-top:.4rem">For SSL + edge routing, use <code class="code">POST /api/v1/domains</code> with <code class="code">CLOUDFLARE_API_TOKEN</code> configured.</p>
+<p class="muted" style="margin-top:.6rem">For SSL + edge routing, hit <code>POST /api/v1/domains</code> with <code>CLOUDFLARE_API_TOKEN</code> set.</p>
 </div>
 
 <div class="card">
-<h2 style="margin-top:0">Variables</h2>
-<p class="muted" style="font-size:12px;margin-bottom:.6rem">Encrypted at rest. Referenced as <code class="code">\${NAME}</code> in <code class="code">.push-live/proxy.json</code>.</p>
+<h2>Variables</h2>
+<p class="muted">Encrypted at rest. Referenced as <code>\${NAME}</code> in <code>.push-live/proxy.json</code>.</p>
 <table><thead><tr><th>Name</th><th>Pinned origin</th><th>Updated</th></tr></thead><tbody>${varsRows}</tbody></table>
-<form method="post" action="/dashboard/variables" class="row" style="margin-top:1rem">
+<form method="post" action="/dashboard/variables" class="row" style="margin-top:1.2rem">
   <input type="text" name="name" placeholder="UPSTREAM_KEY" style="flex:1;max-width:18rem" pattern="[A-Z][A-Z0-9_]*">
   <input type="text" name="value" placeholder="value" style="flex:1;max-width:18rem">
   <button type="submit">Set</button>
@@ -459,18 +489,18 @@ function renderDashboard(data: {
 </div>
 
 <div class="card">
-<h2 style="margin-top:0">Wallet</h2>
-<p class="muted" style="margin-bottom:.6rem">${data.user.wallet ? `Connected: <code class="code">${escapeHtml(data.user.wallet)}</code>` : `Not connected — required to gate sites with a stablecoin paywall.`}</p>
-<form method="post" action="/dashboard/wallet" class="row">
-  <input type="text" name="address" placeholder="0x…" value="${escapeHtml(data.user.wallet ?? '')}" style="flex:1;max-width:24rem;font:13px ui-monospace,Menlo,monospace">
+<h2>Wallet</h2>
+<p class="muted">${data.user.wallet ? `Connected at <code>${escapeHtml(data.user.wallet)}</code>` : `Not connected — required to gate sites with a stablecoin paywall.`}</p>
+<form method="post" action="/dashboard/wallet" class="row" style="margin-top:.4rem">
+  <input type="text" name="address" placeholder="0x…" value="${escapeHtml(data.user.wallet ?? '')}" style="flex:1;max-width:24rem;font-family:var(--mono);font-size:13px">
   <button type="submit">Save</button>
 </form>
 </div>
 
 <div class="card">
-<h2 style="margin-top:0">API keys</h2>
+<h2>API keys</h2>
 <table><thead><tr><th>Prefix</th><th>Label</th><th>Created</th></tr></thead><tbody>${keysRows}</tbody></table>
-<form method="post" action="/dashboard/keys" style="margin-top:1rem" class="row">
+<form method="post" action="/dashboard/keys" class="row" style="margin-top:1.2rem">
   <input type="text" name="label" placeholder="Label (e.g. laptop, ci)" style="flex:1;max-width:18rem">
   <button type="submit">Mint key</button>
 </form>
@@ -480,14 +510,17 @@ function renderDashboard(data: {
 function renderClaim(data: { slug: string; token: string; expiresIn: number | null; signedIn: boolean; apex: string }): string {
   const minutes = data.expiresIn != null ? Math.round(data.expiresIn / 60000) : null;
   return `
-<h1>Claim site</h1>
-<p>Claiming <a href="https://${escapeHtml(data.slug)}.${escapeHtml(data.apex)}/" target="_blank"><code class="code">${escapeHtml(data.slug)}</code></a> removes its 24h expiry and moves it to your account.</p>
-${minutes != null ? `<p class="muted">Expires in ~${minutes} minutes if unclaimed.</p>` : ''}
-<form method="post" class="card" style="max-width:28rem">
+<div style="max-width:32rem">
+<span class="eyebrow">Claim</span>
+<h1>Make it permanent.</h1>
+<p class="lede">Claiming <a href="https://${escapeHtml(data.slug)}.${escapeHtml(data.apex)}/" target="_blank"><code>${escapeHtml(data.slug)}</code></a> removes its 24-hour expiry and moves it to your account.</p>
+${minutes != null ? `<p class="muted">Expires in about ${minutes} minute${minutes === 1 ? '' : 's'} if unclaimed.</p>` : ''}
+<form method="post" class="card">
   <input type="hidden" name="slug" value="${escapeHtml(data.slug)}">
   <input type="hidden" name="token" value="${escapeHtml(data.token)}">
-  <button type="submit">${data.signedIn ? 'Claim now' : 'Sign in & claim'}</button>
-</form>`;
+  <button type="submit" class="btn btn--block">${data.signedIn ? 'Claim now' : 'Sign in &amp; claim'}</button>
+</form>
+</div>`;
 }
 
 function generateCode(): string {
