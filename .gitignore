@@ -1,0 +1,11 @@
+node_modules
+.wrangler
+.dev.vars
+dist
+.DS_Store
+*.log
+# Scraped reference material — not for redistribution.
+research/
+# CLI-stored credentials (just in case someone runs from the repo)
+.clonehn/
+.sloop/credentials

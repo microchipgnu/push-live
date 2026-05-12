@@ -1,0 +1,39 @@
+name = "sloop"
+main = "src/index.ts"
+compatibility_date = "2025-01-09"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+PUBLIC_APEX_HOST = "sloop.wtf"
+R2_ACCOUNT_ID = "97c691498b367789962e77080bf302c0"
+R2_BUCKET = "sloop-sites"
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+[[r2_buckets]]
+binding = "SITES"
+bucket_name = "sloop-sites"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sloop-db"
+database_id = "908681b1-da1a-474c-a57d-91dde94765e5"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "6bcd2b6f5813473ca9c145d003d4ed0c"
+
+# Cloudflare Email Sending (beta, Workers Paid plan)
+# Verify your sender domain in the Cloudflare dashboard first.
+[[send_email]]
+name = "EMAIL"
+
+# Secrets to set via `wrangler secret put`:
+#   R2_ACCESS_KEY_ID
+#   R2_SECRET_ACCESS_KEY
+# Optional vars (set with `wrangler secret put` or as [vars]):
+#   EMAIL_FROM             e.g. "sloop <noreply@yourdomain.com>"
+#   MAILCHANNELS_API_KEY   fallback when env.EMAIL is not bound
+#   RESEND_API_KEY         last-resort fallback
