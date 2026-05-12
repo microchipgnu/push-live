@@ -61,9 +61,33 @@ export default {
   },
 
   fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    return withRequestLog(req, () => routeRequest(req, env, ctx));
+    return withRequestLog(req, () => safeRoute(req, env, ctx));
   },
 };
+
+async function safeRoute(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  try {
+    return await routeRequest(req, env, ctx);
+  } catch (err) {
+    logLine('error', {
+      msg: 'unhandled',
+      path: new URL(req.url).pathname,
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    const wantsHtml = (req.headers.get('accept') ?? '').includes('text/html');
+    if (wantsHtml) {
+      return new Response(
+        '<!doctype html><meta charset="utf-8"><title>500</title><style>body{font:14px/1.5 system-ui;padding:6rem 2rem;max-width:40rem;margin:auto;color:#1a1a1a}</style><h1>500 — something went wrong</h1><p>The server hit an error rendering this page. Please retry in a moment.</p>',
+        { status: 500, headers: { 'content-type': 'text/html; charset=utf-8' } },
+      );
+    }
+    return new Response(
+      JSON.stringify({ error: 'internal error', code: 'internal_error' }),
+      { status: 500, headers: { 'content-type': 'application/json; charset=utf-8' } },
+    );
+  }
+}
 
 async function routeRequest(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
