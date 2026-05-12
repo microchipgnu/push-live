@@ -9,7 +9,7 @@ PORT="${PORT:-8787}"
 BASE="http://127.0.0.1:${PORT}"
 HOST="push-live.com"      # matches wrangler.toml PUBLIC_APEX_HOST
 WORK="$(mktemp -d)"
-trap 'rc=$?; [[ -n "${WRANGLER_PID:-}" ]] && kill "$WRANGLER_PID" 2>/dev/null || true; rm -rf "$WORK"; exit $rc' EXIT
+trap 'rc=$?; if [[ "$rc" -ne 0 && -f "$WORK/wrangler.log" ]]; then echo "----- wrangler.log (tail 200) -----" >&2; tail -n 200 "$WORK/wrangler.log" >&2; fi; [[ -n "${WRANGLER_PID:-}" ]] && kill "$WRANGLER_PID" 2>/dev/null || true; rm -rf "$WORK"; exit $rc' EXIT
 
 red()    { printf "\033[31m%s\033[0m\n" "$*" >&2; }
 green()  { printf "\033[32m%s\033[0m\n" "$*"; }
