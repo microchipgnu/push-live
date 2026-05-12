@@ -49,7 +49,7 @@ discoveryRouter.get('/pricing.md', (c) => {
 discoveryRouter.get('/.well-known/agent.json', (c) => {
   const host = c.env.PUBLIC_APEX_HOST;
   return c.json({
-    name: 'sloop',
+    name: 'push-live',
     summary: 'Static site hosting and private file storage for agents, on Cloudflare.',
     base_url: `https://${host}`,
     docs_url: `https://${host}/docs`,
@@ -77,11 +77,11 @@ discoveryRouter.get('/.well-known/agent-card.json', (c) => {
   const host = c.env.PUBLIC_APEX_HOST;
   return c.json({
     schema_version: 'v1',
-    name_for_human: 'sloop',
-    name_for_model: 'sloop',
+    name_for_human: 'push-live',
+    name_for_model: 'push-live',
     description_for_human: 'Static hosting + private storage built for agents.',
     description_for_model:
-      'Use sloop to publish static websites and store private agent files. Anonymous publish creates a 24h site at <slug>.' + host + '. Authenticated publish uses an API key acquired via the email-code flow. Drives provide versioned storage with scoped share tokens.',
+      'Use push-live to publish static websites and store private agent files. Anonymous publish creates a 24h site at <slug>.' + host + '. Authenticated publish uses an API key acquired via the email-code flow. Drives provide versioned storage with scoped share tokens.',
     api: {
       type: 'openapi',
       url: `https://${host}/openapi.json`,
@@ -95,10 +95,10 @@ discoveryRouter.get('/.well-known/ai-plugin.json', (c) => {
   const host = c.env.PUBLIC_APEX_HOST;
   return c.json({
     schema_version: 'v1',
-    name_for_human: 'sloop',
-    name_for_model: 'sloop',
+    name_for_human: 'push-live',
+    name_for_model: 'push-live',
     description_for_human: 'Static hosting + private storage built for agents.',
-    description_for_model: 'Publish static sites and store private files on sloop. Anonymous publish works without an account; authenticated publish uses an API key.',
+    description_for_model: 'Publish static sites and store private files on push-live. Anonymous publish works without an account; authenticated publish uses an API key.',
     auth: { type: 'user_http', authorization_type: 'bearer' },
     api: { type: 'openapi', url: `https://${host}/openapi.json` },
     logo_url: `https://${host}/logo.png`,
@@ -159,7 +159,7 @@ discoveryRouter.get('/schema-feeds/agent-resources.jsonl', (c) => {
     {
       '@context': 'https://schema.org',
       '@type': 'WebAPI',
-      name: 'sloop API',
+      name: 'push-live API',
       url: `https://${host}/openapi.json`,
       documentation: `https://${host}/docs`,
       description: 'Static hosting and private file storage API for agents.',
@@ -167,7 +167,7 @@ discoveryRouter.get('/schema-feeds/agent-resources.jsonl', (c) => {
     {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',
-      name: 'sloop',
+      name: 'push-live',
       url: `https://${host}`,
       applicationCategory: 'DeveloperApplication',
       operatingSystem: 'Web',
@@ -226,7 +226,7 @@ function renderDocs(host: string): string {
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Docs · sloop</title>
+<title>Docs · push-live</title>
 <style>
 *{box-sizing:border-box}
 body{font:14.5px/1.55 ui-sans-serif,system-ui,sans-serif;color:#0a0a0a;background:#fff;margin:0}
@@ -257,7 +257,7 @@ pre{background:#0b0b0c;color:#fafafa;padding:1rem;border-radius:6px;overflow-x:a
 </style></head>
 <body>
 <header>
-  <a class="brand" href="/">sloop</a>
+  <a class="brand" href="/">push-live</a>
   <nav><a href="/pricing">Pricing</a><a href="/openapi.json">OpenAPI</a><a href="/llms.txt">llms.txt</a><a href="/signin">Sign in</a></nav>
 </header>
 <main>
@@ -290,7 +290,7 @@ ${sections}
 
 function buildLlmsText(host: string, full: boolean): string {
   const base = [
-    `# sloop`,
+    `# push-live`,
     ``,
     `Static site hosting and private file storage for AI agents, running on Cloudflare Workers + R2 + D1.`,
     ``,
@@ -360,14 +360,14 @@ function buildLlmsText(host: string, full: boolean): string {
     `JSON shape: { code, message, retry_after?, ... }. Common codes: invalid_request, unauthorized, not_found, conflict, gone, precondition_failed, payload_too_large, quota_exceeded, rate_limit_exceeded, payment_required.`,
     ``,
     `## Forks and proxy routes`,
-    `- Set forkable: true to expose /.sloop/manifest.json and /.sloop/raw/<path>, and inject a fork button in served HTML.`,
-    `- Ship a .sloop/proxy.json file to route some paths to upstream APIs. Headers can include \${VARIABLE_NAME} which is resolved server-side from the encrypted variables store.`,
+    `- Set forkable: true to expose /.push-live/manifest.json and /.push-live/raw/<path>, and inject a fork button in served HTML.`,
+    `- Ship a .push-live/proxy.json file to route some paths to upstream APIs. Headers can include \${VARIABLE_NAME} which is resolved server-side from the encrypted variables store.`,
   ]).join('\n');
 }
 
 function buildPricingMd(host: string): string {
   const lines: string[] = [
-    `# sloop pricing`,
+    `# push-live pricing`,
     ``,
     `Source-available clone, self-hosted on Cloudflare. The numbers below are the defaults baked into src/lib/quotas.ts and can be edited.`,
     ``,
@@ -410,7 +410,7 @@ function buildOpenApi(host: string): unknown {
   return {
     openapi: '3.1.0',
     info: {
-      title: 'sloop API',
+      title: 'push-live API',
       version: '0.1.0',
       description: 'Static site hosting and private file storage for agents.',
       contact: { email: `hello@${host}`, url: `https://${host}` },

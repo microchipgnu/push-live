@@ -38,7 +38,7 @@ export async function tryProxyRoute(
   req: Request,
 ): Promise<Response | null> {
   const proxyFile = await env.DB.prepare(
-    `SELECT sha256 FROM site_files WHERE version_id = ?1 AND path = '.sloop/proxy.json'`,
+    `SELECT sha256 FROM site_files WHERE version_id = ?1 AND path = '.push-live/proxy.json'`,
   ).bind(versionId).first<{ sha256: string }>();
   if (!proxyFile) return null;
 
@@ -136,7 +136,7 @@ export async function tryProxyRoute(
     if (FORBIDDEN_RES_HEADERS.has(k.toLowerCase())) continue;
     outHeaders.set(k, v);
   }
-  outHeaders.set('x-sloop-proxy', 'true');
+  outHeaders.set('x-push-live-proxy', 'true');
   return new Response(upstreamRes.body, {
     status: upstreamRes.status,
     statusText: upstreamRes.statusText,

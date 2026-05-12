@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
-// Tiny CLI for sloop. Single file, runs under Bun. No deps.
-//   sloop login                   email-code flow → ~/.sloop/credentials
-//   sloop publish <dir>           upload a directory, finalize, print site URL
-//   sloop update <slug> <dir>     update an existing site (incremental)
-//   sloop list                    your sites
-//   sloop delete <slug>           delete a site
-//   sloop whoami                  current API host + key prefix
+// Tiny CLI for push-live. Single file, runs under Bun. No deps.
+//   push-live login                   email-code flow → ~/.push-live/credentials
+//   push-live publish <dir>           upload a directory, finalize, print site URL
+//   push-live update <slug> <dir>     update an existing site (incremental)
+//   push-live list                    your sites
+//   push-live delete <slug>           delete a site
+//   push-live whoami                  current API host + key prefix
 
 import { readdir, stat, readFile, mkdir, writeFile, chmod } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
@@ -13,8 +13,8 @@ import { homedir } from 'node:os';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 
-const DEFAULT_HOST = process.env.CLONEHN_HOST ?? 'https://sloop.wtf';
-const CRED_PATH = join(homedir(), '.sloop', 'credentials');
+const DEFAULT_HOST = process.env.PUSH_LIVE_HOST ?? 'https://push-live.com';
+const CRED_PATH = join(homedir(), '.push-live', 'credentials');
 
 async function main(argv: string[]) {
   const [cmd, ...rest] = argv;
@@ -55,7 +55,7 @@ async function drive(args: string[]) {
 }
 
 function driveHelp() {
-  console.log(`sloop drive <subcommand>
+  console.log(`push-live drive <subcommand>
 
   list                                List drives
   ls [prefix]                         List files in the default drive
@@ -76,11 +76,11 @@ async function driveSync(args: string[]) {
     else if (!localDir) localDir = a;
     else if (!remotePrefix) remotePrefix = a;
   }
-  if (!localDir || !remotePrefix) fail('usage: sloop drive sync <local-dir> <remote-prefix> [--delete]');
+  if (!localDir || !remotePrefix) fail('usage: push-live drive sync <local-dir> <remote-prefix> [--delete]');
   if (!remotePrefix.endsWith('/')) remotePrefix += '/';
 
   const key = await readApiKey();
-  if (!key) fail('No API key. Run `sloop login`.');
+  if (!key) fail('No API key. Run `push-live login`.');
   const driveId = await defaultDriveId(key);
   const root = resolve(localDir);
   const st = await stat(root).catch(() => null);
@@ -167,7 +167,7 @@ async function defaultDriveId(key: string): Promise<string> {
 
 async function driveList() {
   const key = await readApiKey();
-  if (!key) fail('No API key. Run `sloop login`.');
+  if (!key) fail('No API key. Run `push-live login`.');
   const r = await api('GET', '/api/v1/drives', key) as { drives?: Array<{ id: string; name: string; is_default?: number }> };
   for (const d of r.drives ?? []) {
     console.log(`${d.id.padEnd(36)}  ${d.name}${d.is_default ? '  (default)' : ''}`);
@@ -196,7 +196,7 @@ async function driveLs(prefix: string) {
 }
 
 async function driveCat(path: string | undefined) {
-  if (!path) fail('usage: sloop drive cat <path>');
+  if (!path) fail('usage: push-live drive cat <path>');
   const key = await readApiKey();
   if (!key) fail('No API key.');
   const id = await defaultDriveId(key);
@@ -209,7 +209,7 @@ async function driveCat(path: string | undefined) {
 }
 
 async function drivePut(local: string | undefined, remote: string | undefined) {
-  if (!local || !remote) fail('usage: sloop drive put <local> <remote>');
+  if (!local || !remote) fail('usage: push-live drive put <local> <remote>');
   const key = await readApiKey();
   if (!key) fail('No API key.');
   const id = await defaultDriveId(key);
@@ -234,7 +234,7 @@ async function drivePut(local: string | undefined, remote: string | undefined) {
 }
 
 async function driveRm(path: string | undefined) {
-  if (!path) fail('usage: sloop drive rm <path>');
+  if (!path) fail('usage: push-live drive rm <path>');
   const key = await readApiKey();
   if (!key) fail('No API key.');
   const id = await defaultDriveId(key);
@@ -278,7 +278,7 @@ type BackupDrive = {
 };
 
 type Backup = {
-  format: 'sloop-backup-v1';
+  format: 'push-live-backup-v1';
   exportedAt: string;
   host: string;
   user: { email?: string; plan?: string; wallet?: string | null };
@@ -290,7 +290,7 @@ type Backup = {
 
 async function exportAll(args: string[]) {
   const key = await readApiKey();
-  if (!key) fail('No API key. Run `sloop login`.');
+  if (!key) fail('No API key. Run `push-live login`.');
   let outPath: string | null = null;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--out') outPath = args[++i];
@@ -347,7 +347,7 @@ async function exportAll(args: string[]) {
   }
 
   const backup: Backup = {
-    format: 'sloop-backup-v1',
+    format: 'push-live-backup-v1',
     exportedAt: new Date().toISOString(),
     host: DEFAULT_HOST,
     user: { wallet: walletResp.address ?? null },
@@ -397,12 +397,12 @@ function base64ToBytes(s: string): Uint8Array {
 }
 
 async function importAll(file: string | undefined) {
-  if (!file) fail('usage: sloop import <backup.json>');
+  if (!file) fail('usage: push-live import <backup.json>');
   const key = await readApiKey();
-  if (!key) fail('No API key. Run `sloop login`.');
+  if (!key) fail('No API key. Run `push-live login`.');
   const raw = await readFile(file, 'utf8');
   const backup = JSON.parse(raw) as Backup;
-  if (backup.format !== 'sloop-backup-v1') fail(`unknown backup format: ${backup.format}`);
+  if (backup.format !== 'push-live-backup-v1') fail(`unknown backup format: ${backup.format}`);
   console.error(`Importing into ${DEFAULT_HOST}…`);
 
   if (backup.user?.wallet) {
@@ -465,7 +465,7 @@ async function importAll(file: string | undefined) {
   }
 
   if (backup.variableNames.length > 0) {
-    console.error(`\nNote: ${backup.variableNames.length} variable name(s) were exported but their values are not (backups never include secrets). Re-set with \`sloop\` admin tooling or:`);
+    console.error(`\nNote: ${backup.variableNames.length} variable name(s) were exported but their values are not (backups never include secrets). Re-set with \`push-live\` admin tooling or:`);
     for (const n of backup.variableNames) console.error(`  PUT /api/v1/me/variables/${n}`);
   }
   console.error('Done.');
@@ -481,10 +481,10 @@ function encodePath(p: string): string {
 }
 
 function help() {
-  console.log(`sloop CLI
+  console.log(`push-live CLI
 
 Commands:
-  login                       Mint an API key via email code, save to ~/.sloop/credentials
+  login                       Mint an API key via email code, save to ~/.push-live/credentials
   publish <dir>               Publish a directory as a new site
   update <slug> <dir>         Re-publish a directory to an existing site
   list                        List your sites
@@ -495,13 +495,13 @@ Commands:
   whoami                      Show current host + key prefix
 
 Env:
-  CLONEHN_HOST                API host (default: ${DEFAULT_HOST})
-  CLONEHN_API_KEY             API key (otherwise read from ~/.sloop/credentials)
+  PUSH_LIVE_HOST                API host (default: ${DEFAULT_HOST})
+  PUSH_LIVE_API_KEY             API key (otherwise read from ~/.push-live/credentials)
 `);
 }
 
 async function readApiKey(): Promise<string | null> {
-  if (process.env.CLONEHN_API_KEY) return process.env.CLONEHN_API_KEY.trim();
+  if (process.env.PUSH_LIVE_API_KEY) return process.env.PUSH_LIVE_API_KEY.trim();
   try {
     return (await readFile(CRED_PATH, 'utf8')).trim();
   } catch {
@@ -510,7 +510,7 @@ async function readApiKey(): Promise<string | null> {
 }
 
 async function writeApiKey(key: string) {
-  await mkdir(join(homedir(), '.sloop'), { recursive: true });
+  await mkdir(join(homedir(), '.push-live'), { recursive: true });
   await writeFile(CRED_PATH, key + '\n', 'utf8');
   await chmod(CRED_PATH, 0o600);
 }
@@ -518,7 +518,7 @@ async function writeApiKey(key: string) {
 async function whoami() {
   const key = await readApiKey();
   console.log(`host: ${DEFAULT_HOST}`);
-  console.log(`key:  ${key ? key.slice(0, 12) + '…' : '(not set — run `sloop login`)'}`);
+  console.log(`key:  ${key ? key.slice(0, 12) + '…' : '(not set — run `push-live login`)'}`);
 }
 
 async function login() {
@@ -538,7 +538,7 @@ async function login() {
 
 async function list() {
   const key = await readApiKey();
-  if (!key) fail('No API key. Run `sloop login` first.');
+  if (!key) fail('No API key. Run `push-live login` first.');
   const r = await api('GET', '/api/v1/publishes', key);
   const sites = (r.sites ?? []) as Array<{ slug: string; viewer_title?: string }>;
   for (const s of sites) {
@@ -547,15 +547,15 @@ async function list() {
 }
 
 async function del(slug: string | undefined) {
-  if (!slug) fail('usage: sloop delete <slug>');
+  if (!slug) fail('usage: push-live delete <slug>');
   const key = await readApiKey();
-  if (!key) fail('No API key. Run `sloop login` first.');
+  if (!key) fail('No API key. Run `push-live login` first.');
   await api('DELETE', `/api/v1/publish/${slug}`, key);
   console.log(`Deleted ${slug}.`);
 }
 
 async function publish(dir: string | undefined, existingSlug?: string) {
-  if (!dir) fail(existingSlug ? 'usage: sloop update <slug> <dir>' : 'usage: sloop publish <dir>');
+  if (!dir) fail(existingSlug ? 'usage: push-live update <slug> <dir>' : 'usage: push-live publish <dir>');
   const key = await readApiKey();
   const root = resolve(dir);
   const st = await stat(root).catch(() => null);

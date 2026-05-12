@@ -1,4 +1,4 @@
-# sloop — codebase orientation
+# push-live — codebase orientation
 
 Static hosting + private file storage for agents, running entirely on Cloudflare Workers + R2 + D1 + KV. Source-available, written from scratch.
 
@@ -17,7 +17,7 @@ Static hosting + private file storage for agents, running entirely on Cloudflare
 src/
   index.ts              entry, fetch + scheduled handlers, host-based dispatcher
   serve.ts              serves static sites: KV→D1 version resolve, password+payment gates, SPA mode, proxy passthrough, fork-button injection
-  proxy.ts              .sloop/proxy.json → upstream fetch with ${VAR} interpolation
+  proxy.ts              .push-live/proxy.json → upstream fetch with ${VAR} interpolation
   cleanup.ts            scheduled job: expired anon sites, stale uploads, pending/ prune, CAS GC, history retention
   types.ts              Env interface
   routes/
@@ -42,7 +42,7 @@ src/
     email.ts            transport cascade
     log.ts              structured request log
   ui/layout.ts          shell + base CSS for /signin /dashboard /claim /pricing /docs
-  cli/sloop.ts        bun CLI: login / publish / list / delete / drive {...}
+  cli/push-live.ts        bun CLI: login / publish / list / delete / drive {...}
 migrations/             0001 init, 0002 drives, 0003 routing, 0004 SaaS, 0005 history
 scripts/smoke.sh        end-to-end harness (29+ scenarios), runs against `wrangler dev --local`
 .github/workflows/      deploy on push to main, PR checks
@@ -64,7 +64,7 @@ bun run db:local                 # apply migrations
 bun run dev                      # wrangler dev --local on :8787
 bun run smoke                    # end-to-end harness
 bun run typecheck
-bun run cli -- whoami            # CLI against CLONEHN_HOST env var
+bun run cli -- whoami            # CLI against PUSH_LIVE_HOST env var
 ```
 
 The smoke harness wipes `.wrangler/state` first so each run is reproducible. Wrangler v4 wires the `EMAIL` binding even in local mode; the auth handler surfaces `devCode` in the response when the request comes from `127.0.0.1`/`localhost`.

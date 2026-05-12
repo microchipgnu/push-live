@@ -7,7 +7,7 @@ set -euo pipefail
 
 PORT="${PORT:-8787}"
 BASE="http://127.0.0.1:${PORT}"
-HOST="sloop.wtf"      # matches wrangler.toml PUBLIC_APEX_HOST
+HOST="push-live.com"      # matches wrangler.toml PUBLIC_APEX_HOST
 WORK="$(mktemp -d)"
 trap 'rc=$?; [[ -n "${WRANGLER_PID:-}" ]] && kill "$WRANGLER_PID" 2>/dev/null || true; rm -rf "$WORK"; exit $rc' EXIT
 
@@ -45,7 +45,7 @@ for i in $(seq 1 30); do
 done
 
 step "POST /api/v1/publish (create anonymous site)"
-echo '<!doctype html><h1>hello sloop smoke</h1>' > "$WORK/index.html"
+echo '<!doctype html><h1>hello push-live smoke</h1>' > "$WORK/index.html"
 SIZE=$(wc -c < "$WORK/index.html" | tr -d ' ')
 RESP=$(curl -fsS -X POST "$BASE/api/v1/publish" \
   -H 'content-type: application/json' \
@@ -169,39 +169,39 @@ assert "$SCOPED" "$(cat $WORK/note.txt)" "scoped token can read in-scope"
 CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/v1/drives/$DRIVE_ID/files/elsewhere.txt" -H "authorization: Bearer $TOK")
 assert "$CODE" "403" "scoped token blocked outside prefix"
 
-step "CLI: sloop drive sync (upload diff + unchanged + delete)"
+step "CLI: push-live drive sync (upload diff + unchanged + delete)"
 mkdir -p "$WORK/sync/sub"
 echo "alpha 1" > "$WORK/sync/a.txt"
 echo "beta 1"  > "$WORK/sync/sub/b.txt"
-OUT1=$(CLONEHN_HOST="$BASE" CLONEHN_API_KEY="$API_KEY" bun run src/cli/sloop.ts drive sync "$WORK/sync" "synctest/" 2>&1)
+OUT1=$(PUSH_LIVE_HOST="$BASE" PUSH_LIVE_API_KEY="$API_KEY" bun run src/cli/push-live.ts drive sync "$WORK/sync" "synctest/" 2>&1)
 echo "$OUT1" | grep -q "2 upload(s)" || { red "first sync should upload 2: $OUT1"; exit 1; }
 # Second run unchanged
-OUT2=$(CLONEHN_HOST="$BASE" CLONEHN_API_KEY="$API_KEY" bun run src/cli/sloop.ts drive sync "$WORK/sync" "synctest/" 2>&1)
+OUT2=$(PUSH_LIVE_HOST="$BASE" PUSH_LIVE_API_KEY="$API_KEY" bun run src/cli/push-live.ts drive sync "$WORK/sync" "synctest/" 2>&1)
 echo "$OUT2" | grep -q "Up to date" || { red "second sync should be a no-op: $OUT2"; exit 1; }
 # Change one file, delete another
 echo "alpha 2" > "$WORK/sync/a.txt"
 rm "$WORK/sync/sub/b.txt"
-OUT3=$(CLONEHN_HOST="$BASE" CLONEHN_API_KEY="$API_KEY" bun run src/cli/sloop.ts drive sync "$WORK/sync" "synctest/" --delete 2>&1)
+OUT3=$(PUSH_LIVE_HOST="$BASE" PUSH_LIVE_API_KEY="$API_KEY" bun run src/cli/push-live.ts drive sync "$WORK/sync" "synctest/" --delete 2>&1)
 echo "$OUT3" | grep -q "1 upload(s), 1 delete(s)" || { red "third sync wrong diff: $OUT3"; exit 1; }
 green "  sync: 2/0 → up to date → 1/1 --delete"
 
-step "CLI: sloop drive put / ls / cat / rm"
+step "CLI: push-live drive put / ls / cat / rm"
 echo "cli-driven content" > "$WORK/d.txt"
-CLONEHN_HOST="$BASE" CLONEHN_API_KEY="$API_KEY" bun run src/cli/sloop.ts drive put "$WORK/d.txt" "cli/d.txt" >/dev/null
-LS_OUT=$(CLONEHN_HOST="$BASE" CLONEHN_API_KEY="$API_KEY" bun run src/cli/sloop.ts drive ls "cli/")
+PUSH_LIVE_HOST="$BASE" PUSH_LIVE_API_KEY="$API_KEY" bun run src/cli/push-live.ts drive put "$WORK/d.txt" "cli/d.txt" >/dev/null
+LS_OUT=$(PUSH_LIVE_HOST="$BASE" PUSH_LIVE_API_KEY="$API_KEY" bun run src/cli/push-live.ts drive ls "cli/")
 echo "$LS_OUT" | grep -q "cli/d.txt" || { red "drive ls missing the uploaded file: $LS_OUT"; exit 1; }
-CAT_OUT=$(CLONEHN_HOST="$BASE" CLONEHN_API_KEY="$API_KEY" bun run src/cli/sloop.ts drive cat "cli/d.txt")
+CAT_OUT=$(PUSH_LIVE_HOST="$BASE" PUSH_LIVE_API_KEY="$API_KEY" bun run src/cli/push-live.ts drive cat "cli/d.txt")
 assert "$CAT_OUT" "$(cat $WORK/d.txt)" "drive cat returns file content"
-CLONEHN_HOST="$BASE" CLONEHN_API_KEY="$API_KEY" bun run src/cli/sloop.ts drive rm "cli/d.txt" >/dev/null
+PUSH_LIVE_HOST="$BASE" PUSH_LIVE_API_KEY="$API_KEY" bun run src/cli/push-live.ts drive rm "cli/d.txt" >/dev/null
 green "  drive cli: put / ls / cat / rm"
 
-step "CLI: sloop publish <dir> against local worker"
+step "CLI: push-live publish <dir> against local worker"
 mkdir -p "$WORK/cli-site"
 echo '<!doctype html><h1>via cli</h1>' > "$WORK/cli-site/index.html"
 echo 'body{font-family:sans-serif}' > "$WORK/cli-site/style.css"
-CLI_OUT=$(CLONEHN_HOST="$BASE" CLONEHN_API_KEY="$API_KEY" bun run src/cli/sloop.ts publish "$WORK/cli-site" 2>&1)
+CLI_OUT=$(PUSH_LIVE_HOST="$BASE" PUSH_LIVE_API_KEY="$API_KEY" bun run src/cli/push-live.ts publish "$WORK/cli-site" 2>&1)
 echo "$CLI_OUT" | tail -5
-CLI_URL=$(echo "$CLI_OUT" | grep -oE 'https?://[^ ]+\.sloop\.wtf/' | head -1)
+CLI_URL=$(echo "$CLI_OUT" | grep -oE 'https?://[^ ]+\.push-live\.wtf/' | head -1)
 [[ -n "$CLI_URL" ]] || { red "CLI didn't print site URL: $CLI_OUT"; exit 1; }
 CLI_SLUG=$(echo "$CLI_URL" | sed -E 's|https?://([^.]+)\..*|\1|')
 CLI_SERVED=$(curl -fsS "$BASE/s/$CLI_SLUG/")
@@ -365,12 +365,12 @@ curl -fsS -X POST "$BASE/api/v1/handle" \
 curl -fsS -X POST "$BASE/api/v1/links" \
   -H "authorization: Bearer $API_KEY" -H 'content-type: application/json' \
   -d "{\"slug\":\"$DDSLUG\",\"mount_path\":\"/\"}" >/dev/null
-SERVED=$(curl -fsS -H "Host: smokehandle.sloop.wtf" "$BASE/")
+SERVED=$(curl -fsS -H "Host: smokehandle.push-live.com" "$BASE/")
 assert "$SERVED" "$(cat $WORK/dd.html)" "handle.host serves linked site"
 
 step "Discovery surface: /openapi.json /llms.txt /.well-known/agent.json"
 curl -fsS "$BASE/openapi.json" | python3 -c "import json,sys;d=json.load(sys.stdin);assert d['openapi'].startswith('3.'),d"
-curl -fsS "$BASE/llms.txt" | grep -q "^# sloop" || { red "llms.txt missing header"; exit 1; }
+curl -fsS "$BASE/llms.txt" | grep -q "^# push-live" || { red "llms.txt missing header"; exit 1; }
 curl -fsS "$BASE/.well-known/agent.json" | python3 -c "import json,sys;d=json.load(sys.stdin);assert 'capabilities' in d,d"
 curl -fsS "$BASE/sitemap.xml" | grep -q "<urlset" || { red "sitemap.xml malformed"; exit 1; }
 curl -fsS "$BASE/robots.txt" | grep -q "User-agent" || { red "robots.txt malformed"; exit 1; }
@@ -425,11 +425,11 @@ FFIN=$(echo "$FORK_PUB" | python3 -c "import json,sys;print(json.load(sys.stdin)
 curl -fsS -X PUT "$FUP" -H 'content-type: text/html; charset=utf-8' --data-binary "@$WORK/fork.html" >/dev/null
 curl -fsS -X POST "$FFIN" -H "authorization: Bearer $API_KEY" -H 'content-type: application/json' -d "{\"versionId\":\"$FVER\"}" >/dev/null
 
-MAN=$(curl -fsS "$BASE/s/$FSLUG/.sloop/manifest.json")
+MAN=$(curl -fsS "$BASE/s/$FSLUG/.push-live/manifest.json")
 MAN_FILES=$(echo "$MAN" | python3 -c "import json,sys;print(len(json.load(sys.stdin)['files']))")
 [[ "$MAN_FILES" -ge "1" ]] || { red "manifest.json missing files (got $MAN)"; exit 1; }
 
-RAW=$(curl -fsS "$BASE/s/$FSLUG/.sloop/raw/index.html")
+RAW=$(curl -fsS "$BASE/s/$FSLUG/.push-live/raw/index.html")
 assert "$RAW" "$(cat $WORK/fork.html)" "raw download returns un-modified content"
 
 FBODY=$(curl -fsS "$BASE/s/$FSLUG/")
@@ -455,7 +455,7 @@ PHSIZE=$(wc -c < "$WORK/proxied.html" | tr -d ' ')
 PJSIZE=$(wc -c < "$WORK/proxy.json" | tr -d ' ')
 PROXY_PUB=$(curl -fsS -X POST "$BASE/api/v1/publish" \
   -H "authorization: Bearer $API_KEY" -H 'content-type: application/json' \
-  -d "{\"files\":[{\"path\":\"index.html\",\"size\":$PHSIZE,\"contentType\":\"text/html\"},{\"path\":\".sloop/proxy.json\",\"size\":$PJSIZE,\"contentType\":\"application/json\"}]}")
+  -d "{\"files\":[{\"path\":\"index.html\",\"size\":$PHSIZE,\"contentType\":\"text/html\"},{\"path\":\".push-live/proxy.json\",\"size\":$PJSIZE,\"contentType\":\"application/json\"}]}")
 PSLUG2=$(echo "$PROXY_PUB" | python3 -c "import json,sys;print(json.load(sys.stdin)['slug'])")
 PVER2=$(echo "$PROXY_PUB" | python3 -c "import json,sys;print(json.load(sys.stdin)['upload']['versionId'])")
 PFIN2=$(echo "$PROXY_PUB" | python3 -c "import json,sys;print(json.load(sys.stdin)['upload']['finalizeUrl'])")
@@ -469,7 +469,7 @@ for u in d['upload']['uploads']:
 while read -r upath uurl; do
   case "$upath" in
     "index.html")             curl -fsS -X PUT "$uurl" -H 'content-type: text/html' --data-binary "@$WORK/proxied.html" >/dev/null ;;
-    ".sloop/proxy.json")    curl -fsS -X PUT "$uurl" -H 'content-type: application/json' --data-binary "@$WORK/proxy.json" >/dev/null ;;
+    ".push-live/proxy.json")    curl -fsS -X PUT "$uurl" -H 'content-type: application/json' --data-binary "@$WORK/proxy.json" >/dev/null ;;
   esac
 done < "$WORK/uploads.txt"
 curl -fsS -X POST "$PFIN2" -H "authorization: Bearer $API_KEY" -H 'content-type: application/json' -d "{\"versionId\":\"$PVER2\"}" >/dev/null
@@ -494,10 +494,10 @@ REQ2=$(curl -fsS -X POST "$BASE/api/auth/agent/request-code" -H 'content-type: a
 CODE2=$(echo "$REQ2" | python3 -c "import json,sys;print(json.load(sys.stdin).get('devCode',''))")
 API_KEY2=$(curl -fsS -X POST "$BASE/api/auth/agent/verify-code" -H 'content-type: application/json' -d "{\"email\":\"$EMAIL2\",\"code\":\"$CODE2\"}" | python3 -c "import json,sys;print(json.load(sys.stdin)['apiKey'])")
 curl -fsS "$BASE/api/v1/drives/default" -H "authorization: Bearer $API_KEY2" >/dev/null
-CLONEHN_HOST="$BASE" CLONEHN_API_KEY="$API_KEY2" bun run src/cli/sloop.ts export --out "$WORK/backup-fresh.json" 2>/dev/null
+PUSH_LIVE_HOST="$BASE" PUSH_LIVE_API_KEY="$API_KEY2" bun run src/cli/push-live.ts export --out "$WORK/backup-fresh.json" 2>/dev/null
 [[ -s "$WORK/backup-fresh.json" ]] || { red "export wrote empty file"; exit 1; }
 FMT=$(python3 -c "import json;print(json.load(open('$WORK/backup-fresh.json'))['format'])")
-assert "$FMT" "sloop-backup-v1" "backup has correct format tag"
+assert "$FMT" "push-live-backup-v1" "backup has correct format tag"
 SITES=$(python3 -c "import json;print(len(json.load(open('$WORK/backup-fresh.json'))['sites']))")
 DRIVES=$(python3 -c "import json;print(len(json.load(open('$WORK/backup-fresh.json'))['drives']))")
 green "  fresh export: $SITES sites, $DRIVES drives"

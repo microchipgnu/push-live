@@ -63,7 +63,7 @@ pagesRouter.get('/pricing', (c) => {
 </table>
 </div>
 <p class="muted">Machine-readable: <a href="/pricing.md">/pricing.md</a> · <a href="/openapi.json">/openapi.json</a></p>`;
-  return c.html(shell('Pricing · sloop', body));
+  return c.html(shell('Pricing · push-live', body));
 });
 
 // /docs is now generated from OpenAPI in src/routes/discovery.ts so it can't drift.
@@ -86,7 +86,7 @@ pagesRouter.get('/signin', async (c) => {
   const step = c.req.query('step') === 'code' ? 'code' : 'email';
   const email = c.req.query('email') ?? '';
   const err = c.req.query('err');
-  return c.html(shell('Sign in · sloop', renderSignin(step, email, err)));
+  return c.html(shell('Sign in · push-live', renderSignin(step, email, err)));
 });
 
 pagesRouter.post('/signin', async (c) => {
@@ -169,7 +169,7 @@ pagesRouter.get('/dashboard', async (c) => {
     'SELECT domain, status, ssl_status, created_at FROM domains WHERE owner_user_id = ?1 ORDER BY created_at DESC',
   ).bind(userId).all();
 
-  return c.html(shell(`Dashboard · sloop`, renderDashboard({
+  return c.html(shell(`Dashboard · push-live`, renderDashboard({
     user,
     handle: handle?.handle ?? null,
     sites: (sites.results ?? []) as Site[],
@@ -195,7 +195,7 @@ pagesRouter.post('/dashboard/keys', async (c) => {
   )
     .bind(keyId, userId, tokenHash, token.slice(0, 12), label, Date.now())
     .run();
-  return c.html(shell('New API key · sloop', `
+  return c.html(shell('New API key · push-live', `
     <h1>New API key</h1>
     <p>Save this now — it won't be shown again.</p>
     <pre class="code" style="background:#0b0b0c;color:#fafafa;padding:1rem;border-radius:6px;overflow-x:auto">${escapeHtml(token)}</pre>
@@ -293,7 +293,7 @@ pagesRouter.get('/claim', async (c) => {
   const slug = c.req.query('slug');
   const token = c.req.query('token');
   if (!slug || !token) {
-    return c.html(shell('Claim site · sloop', `<h1>Missing slug or token</h1>
+    return c.html(shell('Claim site · push-live', `<h1>Missing slug or token</h1>
 <p>Use the <code>claimUrl</code> returned when the site was first published.</p>`), 400);
   }
   const userId = await readSession(c.env, c.req.header('cookie') ?? null);
@@ -305,7 +305,7 @@ pagesRouter.get('/claim', async (c) => {
     return c.html(shell('Claim site', `<h1>Already claimed</h1><p>This site is no longer anonymous.</p>`));
   }
   const expiresIn = site.expires_at ? Math.max(0, site.expires_at - Date.now()) : null;
-  return c.html(shell('Claim site · sloop', renderClaim({ slug, token, expiresIn, signedIn: !!userId, apex: c.env.PUBLIC_APEX_HOST }), { user: userId ?? null }));
+  return c.html(shell('Claim site · push-live', renderClaim({ slug, token, expiresIn, signedIn: !!userId, apex: c.env.PUBLIC_APEX_HOST }), { user: userId ?? null }));
 });
 
 pagesRouter.post('/claim', async (c) => {
@@ -449,7 +449,7 @@ function renderDashboard(data: {
 
 <div class="card">
 <h2 style="margin-top:0">Variables</h2>
-<p class="muted" style="font-size:12px;margin-bottom:.6rem">Encrypted at rest. Referenced as <code class="code">\${NAME}</code> in <code class="code">.sloop/proxy.json</code>.</p>
+<p class="muted" style="font-size:12px;margin-bottom:.6rem">Encrypted at rest. Referenced as <code class="code">\${NAME}</code> in <code class="code">.push-live/proxy.json</code>.</p>
 <table><thead><tr><th>Name</th><th>Pinned origin</th><th>Updated</th></tr></thead><tbody>${varsRows}</tbody></table>
 <form method="post" action="/dashboard/variables" class="row" style="margin-top:1rem">
   <input type="text" name="name" placeholder="UPSTREAM_KEY" style="flex:1;max-width:18rem" pattern="[A-Z][A-Z0-9_]*">

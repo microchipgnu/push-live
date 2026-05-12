@@ -59,7 +59,7 @@ payRouter.post('/api/pay/:slug/session', async (c) => {
     depositAddress: sess.depositAddress,
     amount: sess.amount,
     currency: sess.currency,
-    memo: `sloop:${slug}:${id}`,
+    memo: `push-live:${slug}:${id}`,
     expiresInSeconds: SESSION_TTL_SECONDS,
     pollUrl: `${new URL(c.req.url).origin}/api/pay/${slug}/poll?session=${id}`,
     grantUrl: `${new URL(c.req.url).origin}/api/pay/${slug}/grant`,

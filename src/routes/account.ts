@@ -98,7 +98,7 @@ async function findVariableUsage(env: Env, userId: string, varName: string): Pro
   const rows = await env.DB.prepare(
     `SELECT s.slug, sf.sha256
      FROM sites s JOIN site_files sf ON sf.version_id = s.current_version_id
-     WHERE s.owner_user_id = ?1 AND s.status != 'deleted' AND sf.path = '.sloop/proxy.json'`,
+     WHERE s.owner_user_id = ?1 AND s.status != 'deleted' AND sf.path = '.push-live/proxy.json'`,
   ).bind(userId).all<{ slug: string; sha256: string }>();
   const out: string[] = [];
   const needle = new RegExp(`\\$\\{${escapeRegex(varName)}\\}`);
@@ -233,7 +233,7 @@ accountRouter.post('/api/v1/domains', auth({ required: true }), async (c) => {
     // Dev fallback: store a synthetic TXT record so the response shape is stable.
     records = [{
       type: 'TXT',
-      name: `_sloop-challenge.${domain}`,
+      name: `_push-live-challenge.${domain}`,
       value: newId('verify').slice(0, 32),
     }];
   }

@@ -15,7 +15,7 @@ import { withRequestLog, logLine } from './lib/log.ts';
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.use('*', cors({ origin: '*', allowHeaders: ['authorization', 'content-type', 'x-sloop-client'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
+app.use('*', cors({ origin: '*', allowHeaders: ['authorization', 'content-type', 'x-push-live-client'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
 
 app.get('/', (c) =>
   c.html(LANDING_HTML(c.env.PUBLIC_APEX_HOST)),
@@ -137,7 +137,7 @@ async function resolveLink(
 
 const LANDING_HTML = (host: string) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>sloop — static hosting + private storage for agents</title>
+<title>push-live — static hosting + private storage for agents</title>
 <meta name="description" content="Instant static hosting and versioned file storage built for AI agents. Self-hosted on Cloudflare.">
 <style>
 :root{--bg:#fff;--ink:#0a0a0a;--muted:#52525b;--rule:#e4e4e7;--accent:#0b0b0c;--soft:#fafafa}
@@ -187,7 +187,7 @@ code{font:13px ui-monospace,Menlo,monospace;background:#f4f4f5;padding:.1em .35e
 </style></head>
 <body>
 <header><div class="row">
-  <a class="brand" href="/">sloop</a>
+  <a class="brand" href="/">push-live</a>
   <nav>
     <a href="/docs">Docs</a>
     <a href="/pricing">Pricing</a>

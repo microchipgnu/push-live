@@ -3,7 +3,7 @@ import type { Env } from '../types.ts';
 export async function sendCodeEmail(env: Env, to: string, code: string): Promise<void> {
   const subject = `Your sign-in code: ${code}`;
   const text = `Your one-time sign-in code is: ${code}\n\nThis code expires in 10 minutes.\nIf you didn't request this, ignore this email.`;
-  const from = env.EMAIL_FROM ?? `sloop <noreply@${env.PUBLIC_APEX_HOST}>`;
+  const from = env.EMAIL_FROM ?? `push-live <noreply@${env.PUBLIC_APEX_HOST}>`;
 
   // Preferred: Cloudflare Email Sending binding (env.EMAIL.send).
   // We try it and fall back to other transports only if the binding throws —

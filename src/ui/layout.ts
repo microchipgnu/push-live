@@ -35,7 +35,7 @@ export function shell(title: string, body: string, opts: { user?: string | null 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title><style>${BASE_STYLE}</style></head>
-<body><nav><a href="/">sloop</a><div class="right">
+<body><nav><a href="/">push-live</a><div class="right">
 ${opts.user ? `<a href="/dashboard">Dashboard</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a>${signOut}` : `<a href="/pricing">Pricing</a><a href="/docs">Docs</a><a href="/signin">Sign in</a>`}
 </div></nav>
 <main>${body}</main></body></html>`;

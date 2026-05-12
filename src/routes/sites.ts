@@ -211,7 +211,7 @@ function createOrUpdate(mode: 'update' | null) {
         viewer?.title ?? null,
         viewer?.description ?? null,
         viewer?.ogImagePath ?? null,
-        c.req.header('x-sloop-client') ?? null,
+        c.req.header('x-push-live-client') ?? null,
         now,
       )
       .run();

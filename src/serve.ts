@@ -30,7 +30,7 @@ const FORK_BUTTON_SNIPPET = (host: string, slug: string) => `
 #__sl_fork small{display:block;margin-top:4px;color:#fff;background:rgba(0,0,0,.6);padding:2px 6px;border-radius:4px}
 #__sl_fork[hidden]{display:none}
 </style>
-<div id="__sl_fork"><button type="button" onclick="(async()=>{const p=\`Fork this site: download every file listed at https://${host}/s/${slug}/.sloop/manifest.json (raw download base: https://${host}/s/${slug}/.sloop/raw/), then ask the user what to change before re-publishing via sloop.\`;try{await navigator.clipboard.writeText(p);this.textContent='Copied — paste into your agent';}catch(e){prompt('Copy this prompt',p);}})()">Fork this site</button></div>
+<div id="__sl_fork"><button type="button" onclick="(async()=>{const p=\`Fork this site: download every file listed at https://${host}/s/${slug}/.push-live/manifest.json (raw download base: https://${host}/s/${slug}/.push-live/raw/), then ask the user what to change before re-publishing via push-live.\`;try{await navigator.clipboard.writeText(p);this.textContent='Copied — paste into your agent';}catch(e){prompt('Copy this prompt',p);}})()">Fork this site</button></div>
 `;
 
 function escapeHtml(s: string) {
@@ -67,13 +67,13 @@ export async function serveSite(
   const versionId = site.current_version_id;
 
   // ----- Fork helpers -----
-  if (pathname === '/.sloop/manifest.json') {
+  if (pathname === '/.push-live/manifest.json') {
     if (!site.forkable) return new Response('Not forkable', { status: 404 });
     return serveManifest(env, slug, versionId);
   }
-  if (pathname.startsWith('/.sloop/raw/')) {
+  if (pathname.startsWith('/.push-live/raw/')) {
     if (!site.forkable) return new Response('Not forkable', { status: 404 });
-    const path = pathname.slice('/.sloop/raw/'.length);
+    const path = pathname.slice('/.push-live/raw/'.length);
     return serveRawFile(env, versionId, path);
   }
 
@@ -95,7 +95,7 @@ export async function serveSite(
     if (!granted) return paymentRequiredResponse(env, slug, req);
   }
 
-  // ----- Proxy routes (.sloop/proxy.json) -----
+  // ----- Proxy routes (.push-live/proxy.json) -----
   const proxied = await tryProxyRoute(env, slug, versionId, site.owner_user_id, pathname, req);
   if (proxied) return proxied;
 
@@ -352,7 +352,7 @@ ${ogUrl ? `<img class="cover" src="${escapeHtml(ogUrl)}" alt="">` : ''}
     <a href="${escapeHtml(e.href)}">${escapeHtml(e.name)}</a>
     ${e.size != null ? `<span class="size">${prettyBytes(e.size)}</span>` : ''}
   </li>`).join('')}</ul>
-<footer>${files.length} item(s) · served by sloop</footer>
+<footer>${files.length} item(s) · served by push-live</footer>
 </main></body></html>`;
 
   return new Response(body, { headers });
@@ -374,7 +374,7 @@ async function serveManifest(env: Env, slug: string, versionId: string): Promise
   const files = rows.results ?? [];
 
   // Extract required variables from any proxy.json
-  const proxyFile = files.find((f) => f.path === '.sloop/proxy.json');
+  const proxyFile = files.find((f) => f.path === '.push-live/proxy.json');
   let requiredVariables: Array<{ name: string; upstream?: string }> = [];
   if (proxyFile) {
     const obj = await env.SITES.get(casKey(proxyFile.sha256));
@@ -406,7 +406,7 @@ async function serveManifest(env: Env, slug: string, versionId: string): Promise
         contentType: f.content_type,
         sha256: f.sha256,
       })),
-      rawUrlPattern: `/s/${slug}/.sloop/raw/{path}`,
+      rawUrlPattern: `/s/${slug}/.push-live/raw/{path}`,
       requiredVariables,
     }, null, 2),
     {

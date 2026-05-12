@@ -1,4 +1,4 @@
-# Deploying sloop
+# Deploying push-live
 
 End-to-end Cloudflare deploy from a fresh repo. ~15 minutes if you already have a Cloudflare account.
 
@@ -20,7 +20,7 @@ bunx wrangler r2 bucket create sloop-sites
 
 Edit `wrangler.toml`:
 
-- `[vars] PUBLIC_APEX_HOST` → your apex (e.g. `sloop.wtf`)
+- `[vars] PUBLIC_APEX_HOST` → your apex (e.g. `push-live.com`)
 - `[vars] R2_ACCOUNT_ID` → your account id
 - `[[d1_databases]] database_id` → the id from above
 - `[[kv_namespaces]] id` → the id from above
@@ -40,7 +40,7 @@ bunx wrangler secret put CLOUDFLARE_ACCOUNT_ID
 # Optional email fallback if EMAIL binding isn't set or fails
 bunx wrangler secret put MAILCHANNELS_API_KEY    # or
 bunx wrangler secret put RESEND_API_KEY
-bunx wrangler secret put EMAIL_FROM              # "sloop <noreply@your.dom>"
+bunx wrangler secret put EMAIL_FROM              # "push-live <noreply@your.dom>"
 
 # Required ONLY for paid sites with on-chain verification
 bunx wrangler secret put TEMPO_RPC_URL
@@ -57,7 +57,7 @@ Cloudflare Email Sending requires the sender domain (`EMAIL_FROM` or default `no
 In the Cloudflare dashboard for your zone:
 
 1. Add a CNAME record `*` → `<your-worker>.<account>.workers.dev` (proxied, orange cloud)
-2. Add a Worker Custom Domain entry for `*.<apex>` pointing to the `sloop` worker
+2. Add a Worker Custom Domain entry for `*.<apex>` pointing to the `push-live` worker
 
 Without this wildcard, only the path-fallback `/s/<slug>/<path>` works.
 
@@ -103,8 +103,8 @@ curl -s -XPOST "$HOST/api/v1/publish" \
 ## 8. CLI for ongoing use
 
 ```bash
-export CLONEHN_HOST="https://<apex>"
-bun run cli -- login              # email-code → ~/.sloop/credentials
+export PUSH_LIVE_HOST="https://<apex>"
+bun run cli -- login              # email-code → ~/.push-live/credentials
 bun run cli -- publish ./dist
 bun run cli -- drive put ./notes.md notes.md
 ```

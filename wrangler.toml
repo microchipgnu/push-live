@@ -4,9 +4,10 @@ compatibility_date = "2025-01-09"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-PUBLIC_APEX_HOST = "sloop.wtf"
+PUBLIC_APEX_HOST = "push-live.com"
 R2_ACCOUNT_ID = "97c691498b367789962e77080bf302c0"
 R2_BUCKET = "sloop-sites"
+EMAIL_FROM = "push-live <noreply@push-live.com>"
 
 [triggers]
 crons = ["*/10 * * * *"]
@@ -34,6 +35,6 @@ name = "EMAIL"
 #   R2_ACCESS_KEY_ID
 #   R2_SECRET_ACCESS_KEY
 # Optional vars (set with `wrangler secret put` or as [vars]):
-#   EMAIL_FROM             e.g. "sloop <noreply@yourdomain.com>"
+#   EMAIL_FROM             e.g. "push-live <noreply@yourdomain.com>"
 #   MAILCHANNELS_API_KEY   fallback when env.EMAIL is not bound
 #   RESEND_API_KEY         last-resort fallback
