@@ -209,7 +209,7 @@ echo '<!doctype html><h1>via cli</h1>' > "$WORK/cli-site/index.html"
 echo 'body{font-family:sans-serif}' > "$WORK/cli-site/style.css"
 CLI_OUT=$(PUSH_LIVE_HOST="$BASE" PUSH_LIVE_API_KEY="$API_KEY" bun run src/cli/push-live.ts publish "$WORK/cli-site" 2>&1)
 echo "$CLI_OUT" | tail -5
-CLI_URL=$(echo "$CLI_OUT" | grep -oE 'https?://[^ ]+\.push-live\.wtf/' | head -1)
+CLI_URL=$(echo "$CLI_OUT" | grep -oE 'https?://[^ ]+\.push-live\.com/' | head -1)
 [[ -n "$CLI_URL" ]] || { red "CLI didn't print site URL: $CLI_OUT"; exit 1; }
 CLI_SLUG=$(echo "$CLI_URL" | sed -E 's|https?://([^.]+)\..*|\1|')
 CLI_SERVED=$(curl -fsS "$BASE/s/$CLI_SLUG/")
