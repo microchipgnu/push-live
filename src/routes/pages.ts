@@ -56,7 +56,7 @@ pagesRouter.get('/pricing', (c) => {
   const body = `
 <span class="eyebrow">Plans</span>
 <h1>Pricing.</h1>
-<p class="lede">Self-hosted on Cloudflare. These tiers are baked into <code>src/lib/quotas.ts</code> — edit to fit your offering.</p>
+<p class="lede">The free tier is permanent. Pay only once you outgrow it — for more sites, more storage, more custom domains.</p>
 <div class="card" style="overflow-x:auto">
 <table>
 <thead><tr><th>Plan</th><th>Cost</th><th>Storage</th><th>Sites</th><th>Drives</th><th>Domains</th><th>Max file</th><th>History</th><th>Publishes</th></tr></thead>
@@ -199,7 +199,7 @@ pagesRouter.post('/dashboard/keys', async (c) => {
   return c.html(shell('New API key · push-live', `
     <span class="eyebrow">API key</span>
     <h1>One-time reveal.</h1>
-    <p class="lede">Save this now — push-live keeps a hash, not the secret. It won't be shown again.</p>
+    <p class="lede">Save this now — we don't keep a copy. It won't be shown again.</p>
     <div class="card" style="padding:1rem 1.25rem">
       <pre><code>${escapeHtml(token)}</code></pre>
     </div>

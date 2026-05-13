@@ -229,7 +229,7 @@ const LANDING_HTML = (host: string) => `<!doctype html>
     <div class="hero__inner">
       <span class="eyebrow">Static hosting + private storage</span>
       <h1>Three calls.<em>One live site.</em></h1>
-      <p class="lede">Hand your agent an HTTP endpoint and it ships a real URL — anonymous for 24 hours, permanent with a key. Versioned drives, hash-skip deploys, paywalls, password gates. Self-hosted on Cloudflare Workers, R2, D1.</p>
+      <p class="lede">Your agent posts a manifest, uploads, and gets a live URL — anonymous for 24 hours or permanent with a key. Lock anything behind a password, or charge for it and take the payment straight to your wallet.</p>
       <div class="hero__ctas">
         <a class="btn" href="/signin">Mint an API key</a>
         <a class="btn btn--ghost" href="/docs">Read the docs</a>
@@ -261,7 +261,7 @@ const LANDING_HTML = (host: string) => `<!doctype html>
       </article>
       <article class="step">
         <div class="step__head"><span class="step__n">02</span><span class="tag tag--green">Upload</span></div>
-        <h3>Direct to R2, in parallel</h3>
+        <h3>Upload in parallel</h3>
 <pre><code>PUT &lt;upload.uploads[i].url&gt;
 Content-Type: text/html
 &lt;file bytes&gt;</code></pre>
@@ -278,37 +278,37 @@ Content-Type: text/html
   </section>
 
   <section class="reveal" style="margin-top:5rem">
-    <div class="section-head"><h2>What you actually get.</h2><p class="muted">Six primitives, one Worker.</p></div>
+    <div class="section-head"><h2>What you actually get.</h2><p class="muted">Six primitives. Nothing else to learn.</p></div>
     <div class="bento">
       <article class="bento__cell bento__cell--wide bento__cell--accent">
         <span class="tag tag--blue bento__tag">Sites</span>
-        <h3>Static hosting at the edge</h3>
-        <p>HTML, JS, CSS, PDFs, assets — served from <code>&lt;slug&gt;.${escapeHostForDisplay(host)}</code>, a custom domain via Cloudflare for SaaS, or a path-mounted handle. Conditional GETs, range requests, SPA mode, optional fork button.</p>
+        <h3>Real URLs, not previews</h3>
+        <p>HTML, JS, CSS, PDFs, fonts, video — served from <code>&lt;slug&gt;.${escapeHostForDisplay(host)}</code>, your own domain, or a path under your handle. SPA fallback, range requests, custom titles and OG images.</p>
       </article>
       <article class="bento__cell">
         <span class="tag tag--green bento__tag">Drives</span>
-        <h3>Versioned private storage</h3>
-        <p>Scoped share tokens — read or write, path-prefixed, TTL'd. Every mutation snapshots history.</p>
+        <h3>Files only your agent sees</h3>
+        <p>Private versioned storage. Share with another agent via a scoped token — read or write, single folder, expires.</p>
       </article>
       <article class="bento__cell">
-        <span class="tag tag--violet bento__tag">CAS</span>
-        <h3>Hash-skip deploys</h3>
-        <p>Content-addressed by SHA-256. Re-publishing a site only uploads bytes that actually changed.</p>
+        <span class="tag tag--violet bento__tag">Speed</span>
+        <h3>Re-publish in milliseconds</h3>
+        <p>Files that haven't changed don't upload twice. A five-hundred-file site updates as fast as its smallest diff.</p>
       </article>
       <article class="bento__cell">
         <span class="tag tag--yellow bento__tag">Gates</span>
-        <h3>Password &amp; stablecoin paywall</h3>
-        <p>Lock any site with a password or a 402 + session flow that settles on-chain in USDC.</p>
+        <h3>Password or paywall</h3>
+        <p>Lock any site behind a password. Or charge for it — USDC lands in your wallet the moment a visitor pays.</p>
       </article>
       <article class="bento__cell">
         <span class="tag tag--red bento__tag">Proxy</span>
-        <h3>Variable-templated routes</h3>
-        <p>Drop a <code>proxy.json</code>; <code>\${VAR}</code> values are pulled from your encrypted variables store at request time.</p>
+        <h3>Call APIs without leaking keys</h3>
+        <p>Ship a <code>proxy.json</code> and your site can call third-party APIs with secrets you keep on push-live, never in your code.</p>
       </article>
       <article class="bento__cell">
-        <span class="tag bento__tag">Agent-native</span>
-        <h3>Discoverable end to end</h3>
-        <p>Email-code key flow, <code>llms.txt</code>, OpenAPI, <code>agent.json</code> — your agent finds and uses this without scraping.</p>
+        <span class="tag bento__tag">Agent-readable</span>
+        <h3>Discoverable on its own</h3>
+        <p>An <code>llms.txt</code>, OpenAPI, and <code>agent.json</code> ship out of the box. Your agent finds the endpoints, knows the auth shape, and reads the prices — no scraping.</p>
       </article>
     </div>
   </section>
@@ -342,7 +342,7 @@ Content-Type: text/html
 
 <footer>
   <a href="/docs">Docs</a> · <a href="/pricing">Pricing</a> · <a href="/openapi.json">OpenAPI</a> · <a href="/llms.txt">llms.txt</a>
-  <div style="margin-top:.6rem;font-size:12px">Source-available. Cloudflare Workers, R2, D1.</div>
+  <div style="margin-top:.6rem;font-size:12px"><a href="https://github.com/microchipgnu/push-live">Source available on GitHub</a></div>
 </footer>
 <script>${REVEAL_SCRIPT}</script>
 </body></html>`;
