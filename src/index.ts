@@ -342,7 +342,6 @@ Content-Type: text/html
 
 <footer>
   <a href="/docs">Docs</a> · <a href="/pricing">Pricing</a> · <a href="/openapi.json">OpenAPI</a> · <a href="/llms.txt">llms.txt</a>
-  <div style="margin-top:.6rem;font-size:12px"><a href="https://github.com/microchipgnu/push-live">Source available on GitHub</a></div>
 </footer>
 <script>${REVEAL_SCRIPT}</script>
 </body></html>`;

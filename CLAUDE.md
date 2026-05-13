@@ -1,6 +1,6 @@
 # push-live — codebase orientation
 
-Static hosting + private file storage for agents, running entirely on Cloudflare Workers + R2 + D1 + KV. Source-available, written from scratch.
+Static hosting + private file storage for agents, running entirely on Cloudflare Workers + R2 + D1 + KV.
 
 ## Runtime stack
 
