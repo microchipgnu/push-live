@@ -135,7 +135,7 @@ async function routeRequest(req: Request, env: Env, ctx: ExecutionContext): Prom
 
     // Path-based serve works on any host (apex, dev, custom domain without link)
     const pathSlug = /^\/s\/([a-z0-9][a-z0-9-]*)(\/.*)?$/.exec(url.pathname);
-    if (pathSlug) return serveSite(env, pathSlug[1], pathSlug[2] ?? '/', req);
+    if (pathSlug) return serveSite(env, pathSlug[1], pathSlug[2] ?? '/', req, ctx);
 
     // 1) Apex host (or dev host) serves the API + landing
     if (host === apex || host === `www.${apex}` || host === '127.0.0.1' || host === 'localhost') {
@@ -148,14 +148,14 @@ async function routeRequest(req: Request, env: Env, ctx: ExecutionContext): Prom
       if (slug && !slug.includes('.')) {
         // Could be a handle subdomain — try handle lookup before slug fallback
         const linked = await resolveLink(env, slug, url.pathname);
-        if (linked) return serveSite(env, linked.slug, linked.remainingPath, req);
-        return serveSite(env, slug, url.pathname, req);
+        if (linked) return serveSite(env, linked.slug, linked.remainingPath, req, ctx);
+        return serveSite(env, slug, url.pathname, req, ctx);
       }
     }
 
     // 3) Custom domain: <domain>/<path>
     const linked = await resolveLink(env, host, url.pathname);
-    if (linked) return serveSite(env, linked.slug, linked.remainingPath, req);
+    if (linked) return serveSite(env, linked.slug, linked.remainingPath, req, ctx);
 
     return app.fetch(req, env, ctx);
 }

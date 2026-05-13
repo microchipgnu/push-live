@@ -78,7 +78,7 @@ async function handleHit(ctx: AppContext): Promise<Response> {
     return noContent();
   }
 
-  await recordHit(env, slug, req, body);
+  await recordHit(env, slug, req, body, 'beacon');
   return noContent();
 }
 
@@ -97,15 +97,22 @@ async function handleHitGet(ctx: AppContext): Promise<Response> {
   await recordHit(env, slug, req, {
     path: url.searchParams.get('path') ?? undefined,
     referrer: url.searchParams.get('ref') ?? undefined,
-  });
+  }, 'beacon');
   return transparentPixel();
 }
 
 type HitBody = { path?: string; referrer?: string; screen?: string };
 
-async function recordHit(env: Env, slug: string, req: Request, body: HitBody): Promise<void> {
+async function recordHit(
+  env: Env,
+  slug: string,
+  req: Request,
+  body: HitBody,
+  source: 'beacon' | 'server',
+): Promise<void> {
   const ip = req.headers.get('cf-connecting-ip') ?? '0.0.0.0';
   const ua = req.headers.get('user-agent') ?? '';
+  const pushLiveClient = req.headers.get('x-push-live-client');
   const country = req.headers.get('cf-ipcountry') ?? null;
   const refererHeader = req.headers.get('referer');
   const day = new Date().toISOString().slice(0, 10);
@@ -118,10 +125,73 @@ async function recordHit(env: Env, slug: string, req: Request, body: HitBody): P
   const path = clip(body.path ?? safePathFrom(refererHeader)) ?? null;
   const referrer = clip(body.referrer ?? refererHeader) ?? null;
 
+  // Beacon path implies a browser ran JS; otherwise classify from headers.
+  // X-Push-Live-Client wins over UA so a self-identifying agent is never
+  // mis-bucketed as 'browser' even if it spoofs Mozilla.
+  const clientKind: ClientKind = source === 'beacon' ? 'browser' : classifyClient(ua, pushLiveClient);
+
   await env.DB.prepare(
-    `INSERT INTO site_app_events (slug, app, event, ts, path, referrer, country, ua_hash, visitor_hash)
-     VALUES (?1, 'analytics', 'hit', ?2, ?3, ?4, ?5, ?6, ?7)`,
-  ).bind(slug, Date.now(), path, referrer, country, uaHash, visitorHash).run();
+    `INSERT INTO site_app_events (slug, app, event, ts, path, referrer, country, ua_hash, visitor_hash, source, client_kind)
+     VALUES (?1, 'analytics', 'hit', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+  ).bind(slug, Date.now(), path, referrer, country, uaHash, visitorHash, source, clientKind).run();
+}
+
+export type ClientKind = 'browser' | 'agent' | 'bot' | 'unknown';
+
+// Classify a User-Agent string. The X-Push-Live-Client header is a strong
+// signal: any caller setting it is declaring itself a programmatic agent.
+// Order matters — bots first so a bot UA containing "Mozilla" still wins.
+export function classifyClient(ua: string, pushLiveClient: string | null = null): ClientKind {
+  if (pushLiveClient && pushLiveClient.trim()) return 'agent';
+  if (!ua) return 'unknown';
+  if (BOT_RE.test(ua)) return 'bot';
+  if (AGENT_RE.test(ua)) return 'agent';
+  if (BROWSER_RE.test(ua)) return 'browser';
+  return 'unknown';
+}
+
+// Common search and social bots.
+const BOT_RE = /\b(Googlebot|GoogleOther|Bingbot|Yahoo!\sSlurp|DuckDuckBot|Baiduspider|YandexBot|Twitterbot|LinkedInBot|facebookexternalhit|Discordbot|Slackbot|Applebot|PetalBot|AhrefsBot|SemrushBot|MJ12bot|bot\/|crawler|spider)\b/i;
+
+// HTTP libraries and known AI/agent clients. ChatGPT-User and OAI/Anthropic
+// fetchers identify themselves; the rest are generic HTTP stacks.
+const AGENT_RE = /\b(curl|Wget|python-requests|httpx|urllib|aiohttp|node-fetch|undici|got|axios|okhttp|Go-http-client|Java\/|Java-http-client|Ruby|Mechanize|libwww-perl|HTTPie|Bun\/|Deno\/|Insomnia|Postman|Apache-HttpClient|OpenAI|ChatGPT-User|GPTBot|ClaudeBot|Claude-Web|Anthropic|PerplexityBot|YouBot|langchain|llamaindex|cohere|Cohere)\b/i;
+
+// Real browsers always present a Mozilla token plus a major engine name.
+const BROWSER_RE = /Mozilla\/.*(Chrome|Safari|Firefox|Edge|Opera|Vivaldi|Brave)\b/;
+
+// Called from src/serve.ts for every HTML response on an analytics-enabled
+// owned site. Records server-side hits ONLY for non-browser UAs so beacon
+// and server channels never double-count the same visitor.
+export async function recordServerHit(
+  env: Env,
+  slug: string,
+  ownerUserId: string,
+  req: Request,
+): Promise<void> {
+  const ua = req.headers.get('user-agent') ?? '';
+  const pushLiveClient = req.headers.get('x-push-live-client');
+  const kind = classifyClient(ua, pushLiveClient);
+  if (kind === 'browser') return;          // beacon will record this one
+
+  if (!await passQuotaForServer(env, slug, ownerUserId)) return;
+
+  const url = new URL(req.url);
+  await recordHit(env, slug, req, { path: url.pathname }, 'server');
+}
+
+// Quota check for server-side recordings. Mirrors passQuota but skips the
+// apps_disabled lookup — serve.ts already checked isAppEnabled before
+// calling us, so we'd be making an extra D1 read for no gain.
+async function passQuotaForServer(env: Env, slug: string, ownerUserId: string): Promise<boolean> {
+  const plan = await userPlan(env, ownerUserId);
+  if (plan.appAnalyticsEventsPerMonth <= 0) return false;
+  const monthStart = startOfMonthMs();
+  const count = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM site_app_events
+     WHERE slug = ?1 AND app = 'analytics' AND ts >= ?2`,
+  ).bind(slug, monthStart).first<{ n: number }>();
+  return (count?.n ?? 0) < plan.appAnalyticsEventsPerMonth;
 }
 
 // Origin check: must be missing (server-to-server agents) or match the
@@ -209,6 +279,7 @@ export type AnalyticsSummary = {
   windowMs: number;
   events: number;
   uniqueVisitors: number;
+  byClient: Record<ClientKind, number>;
   byDay: Array<{ day: string; events: number; uniqueVisitors: number }>;
   topPaths: Array<{ path: string | null; events: number }>;
   topReferrers: Array<{ referrer: string | null; events: number }>;
@@ -223,6 +294,18 @@ export async function loadAnalyticsSummary(env: Env, slug: string, periodDays: n
     `SELECT COUNT(*) AS events, COUNT(DISTINCT visitor_hash) AS uniques
      FROM site_app_events WHERE slug = ?1 AND app = 'analytics' AND ts >= ?2`,
   ).bind(slug, since).first<{ events: number; uniques: number }>();
+
+  const kindRows = await env.DB.prepare(
+    `SELECT COALESCE(client_kind, 'browser') AS kind, COUNT(*) AS n
+     FROM site_app_events WHERE slug = ?1 AND app = 'analytics' AND ts >= ?2
+     GROUP BY kind`,
+  ).bind(slug, since).all<{ kind: string; n: number }>();
+  const byClient: Record<ClientKind, number> = { browser: 0, agent: 0, bot: 0, unknown: 0 };
+  for (const r of kindRows.results ?? []) {
+    if (r.kind === 'browser' || r.kind === 'agent' || r.kind === 'bot' || r.kind === 'unknown') {
+      byClient[r.kind] = r.n;
+    }
+  }
 
   const dayRows = await env.DB.prepare(
     `SELECT
@@ -258,6 +341,7 @@ export async function loadAnalyticsSummary(env: Env, slug: string, periodDays: n
     windowMs,
     events: totals?.events ?? 0,
     uniqueVisitors: totals?.uniques ?? 0,
+    byClient,
     byDay: (dayRows.results ?? []).map((r) => ({ day: r.day, events: r.events, uniqueVisitors: r.uniques })),
     topPaths: pathRows.results ?? [],
     topReferrers: refRows.results ?? [],

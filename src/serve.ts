@@ -4,7 +4,7 @@ import { tryProxyRoute } from './proxy.ts';
 import { verifyGrantToken, loadSitePrice } from './routes/pay.ts';
 import { dispatchApp } from './apps/registry.ts';
 import { isAppEnabled } from './apps/types.ts';
-import { beaconScriptTag } from './apps/analytics.ts';
+import { beaconScriptTag, recordServerHit } from './apps/analytics.ts';
 
 const NOT_FOUND_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>Not found</title>
 <style>body{font:14px/1.5 system-ui;padding:6rem 2rem;max-width:40rem;margin:auto;color:#1a1a1a}</style></head>
@@ -60,6 +60,7 @@ export async function serveSite(
   slug: string,
   pathname: string,
   req: Request,
+  ctx?: ExecutionContext,
 ): Promise<Response> {
   const site = await loadSite(env, slug);
   if (!site || site.status === 'deleted' || !site.current_version_id) {
@@ -187,6 +188,12 @@ export async function serveSite(
     let html = await obj.text();
     if (site.forkable) html = injectForkButton(html, env.PUBLIC_APEX_HOST, slug);
     if (analyticsOn) html = injectBeforeBodyClose(html, beaconScriptTag(appPathPrefix(req)));
+    // Server-side counter for non-browser UAs. Browser hits are recorded by
+    // the beacon, so we only ever write when the UA looks like an agent/bot,
+    // which avoids double-counting by construction.
+    if (analyticsOn && ctx && site.owner_user_id) {
+      ctx.waitUntil(recordServerHit(env, slug, site.owner_user_id, req).catch(() => {}));
+    }
     const headers = new Headers({
       'content-type': file.content_type,
       'cache-control': 'public, max-age=60',

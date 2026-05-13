@@ -158,16 +158,31 @@ pagesRouter.get('/dashboard', async (c) => {
      ORDER BY updated_at DESC LIMIT 200`,
   ).bind(userId).all();
   // Pull 7-day analytics counts in one shot — cheaper than N per-site queries.
+  // Split by client_kind so the dashboard can show agent vs browser visits.
   const since7d = Date.now() - 7 * 86_400_000;
   const eventsRows = await c.env.DB.prepare(
-    `SELECT e.slug, COUNT(*) AS events, COUNT(DISTINCT e.visitor_hash) AS uniques
+    `SELECT e.slug,
+            COALESCE(e.client_kind, 'browser') AS kind,
+            COUNT(*) AS events,
+            COUNT(DISTINCT e.visitor_hash) AS uniques
      FROM site_app_events e
      INNER JOIN sites s ON s.slug = e.slug
      WHERE s.owner_user_id = ?1 AND e.app = 'analytics' AND e.ts >= ?2
-     GROUP BY e.slug`,
-  ).bind(userId, since7d).all<{ slug: string; events: number; uniques: number }>();
-  const eventsBySlug = new Map<string, { events: number; uniques: number }>();
-  for (const r of eventsRows.results ?? []) eventsBySlug.set(r.slug, { events: r.events, uniques: r.uniques });
+     GROUP BY e.slug, kind`,
+  ).bind(userId, since7d).all<{ slug: string; kind: string; events: number; uniques: number }>();
+  const eventsBySlug = new Map<string, { events: number; uniques: number; byKind: { browser: number; agent: number; bot: number; unknown: number } }>();
+  for (const r of eventsRows.results ?? []) {
+    let bucket = eventsBySlug.get(r.slug);
+    if (!bucket) {
+      bucket = { events: 0, uniques: 0, byKind: { browser: 0, agent: 0, bot: 0, unknown: 0 } };
+      eventsBySlug.set(r.slug, bucket);
+    }
+    bucket.events += r.events;
+    bucket.uniques = Math.max(bucket.uniques, r.uniques);    // approximate; close enough at this granularity
+    if (r.kind === 'browser' || r.kind === 'agent' || r.kind === 'bot' || r.kind === 'unknown') {
+      bucket.byKind[r.kind] += r.events;
+    }
+  }
   const handle = await c.env.DB.prepare('SELECT handle FROM handles WHERE owner_user_id = ?1').bind(userId).first<{ handle: string }>();
   const keys = await c.env.DB.prepare(
     'SELECT prefix, label, created_at, last_used FROM api_keys WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 20',
@@ -424,11 +439,13 @@ ${err === 'expired' ? `<div class="alert error">Code expired. Request a new one.
 </div>`;
 }
 
+type SiteAnalytics = { events: number; uniques: number; byKind: { browser: number; agent: number; bot: number; unknown: number } };
+
 function renderDashboard(data: {
   user: { email: string; plan: string; wallet: string | null };
   handle: string | null;
   sites: Site[];
-  siteAnalytics: Map<string, { events: number; uniques: number }>;
+  siteAnalytics: Map<string, SiteAnalytics>;
   keys: ApiKeyRow[];
   drives: DriveRow[];
   variables: VarRow[];
@@ -548,25 +565,31 @@ ${renderAppsCard(data)}
 
 function renderAppsCard(data: {
   sites: Site[];
-  siteAnalytics: Map<string, { events: number; uniques: number }>;
+  siteAnalytics: Map<string, SiteAnalytics>;
   apex: string;
 }): string {
   if (data.sites.length === 0) return '';
 
   const rows = data.sites.map((s) => {
-    const analytics = data.siteAnalytics.get(s.slug) ?? { events: 0, uniques: 0 };
+    const analytics = data.siteAnalytics.get(s.slug)
+      ?? { events: 0, uniques: 0, byKind: { browser: 0, agent: 0, bot: 0, unknown: 0 } };
     const disabled = parseDisabledApps(s.apps_disabled).includes('analytics');
     const toggleAction = disabled ? 'enable' : 'disable';
     const toggleLabel = disabled ? 'Enable' : 'Disable';
+    const { browser, agent, bot } = analytics.byKind;
+    const breakdown = analytics.events === 0
+      ? `<span class="muted">no events yet</span>`
+      : `<span class="cluster" style="gap:.5rem;flex-wrap:wrap">
+          <strong>${analytics.events.toLocaleString()}</strong>
+          <span class="muted">7 d ·</span>
+          <span class="tag tag--blue">browser ${browser.toLocaleString()}</span>
+          <span class="tag tag--violet">agent ${agent.toLocaleString()}</span>
+          ${bot > 0 ? `<span class="tag tag--yellow">bot ${bot.toLocaleString()}</span>` : ''}
+        </span>`;
     return `
       <tr>
         <td><a href="https://${escapeHtml(s.slug)}.${escapeHtml(data.apex)}/" target="_blank" rel="noopener">${escapeHtml(s.slug)}</a></td>
-        <td>${disabled
-          ? `<span class="tag">disabled</span>`
-          : `<span class="cluster" style="gap:.4rem">
-              <strong>${analytics.events.toLocaleString()}</strong>
-              <span class="muted">events · ${analytics.uniques.toLocaleString()} unique · 7 d</span>
-            </span>`}</td>
+        <td>${disabled ? `<span class="tag">disabled</span>` : breakdown}</td>
         <td class="right">
           <form method="post" action="/dashboard/sites/${encodeURIComponent(s.slug)}/apps/analytics/${toggleAction}" style="display:inline">
             <button class="btn ${disabled ? '' : 'btn--ghost'} btn--sm" type="submit">${toggleLabel}</button>
@@ -578,7 +601,7 @@ function renderAppsCard(data: {
   return `
 <div class="card">
 <h2>Apps</h2>
-<p class="muted" style="margin:0 0 1rem">Analytics auto-injects a tiny beacon into served HTML — no setup. Disable per site to opt out; the endpoint stops accepting hits and the beacon is no longer injected.</p>
+<p class="muted" style="margin:0 0 1rem">Analytics auto-injects a tiny beacon into served HTML and counts agents server-side (so HTTP-only callers don't slip past). Disable per site to opt out — endpoint stops accepting hits, beacon is no longer injected.</p>
 <table><thead><tr><th>Slug</th><th>Analytics (7 d)</th><th class="right"></th></tr></thead><tbody>${rows}</tbody></table>
 </div>`;
 }
