@@ -9,6 +9,7 @@ import { readSession, issueSessionCookie, clearSessionCookie } from '../lib/sess
 import { shell, escapeHtml } from '../ui/layout.ts';
 import { PLANS } from '../lib/quotas.ts';
 import { encryptValue } from '../lib/crypto.ts';
+import { parseDisabledApps } from '../apps/types.ts';
 
 export const pagesRouter = new Hono<{ Bindings: Env }>();
 
@@ -152,10 +153,21 @@ pagesRouter.get('/dashboard', async (c) => {
   if (!user) return new Response(null, { status: 302, headers: { location: '/signin', 'set-cookie': clearSessionCookie() } });
 
   const sites = await c.env.DB.prepare(
-    `SELECT slug, status, expires_at, spa_mode, forkable, viewer_title, updated_at
+    `SELECT slug, status, expires_at, spa_mode, forkable, viewer_title, updated_at, apps_disabled
      FROM sites WHERE owner_user_id = ?1 AND status != 'deleted'
      ORDER BY updated_at DESC LIMIT 200`,
   ).bind(userId).all();
+  // Pull 7-day analytics counts in one shot — cheaper than N per-site queries.
+  const since7d = Date.now() - 7 * 86_400_000;
+  const eventsRows = await c.env.DB.prepare(
+    `SELECT e.slug, COUNT(*) AS events, COUNT(DISTINCT e.visitor_hash) AS uniques
+     FROM site_app_events e
+     INNER JOIN sites s ON s.slug = e.slug
+     WHERE s.owner_user_id = ?1 AND e.app = 'analytics' AND e.ts >= ?2
+     GROUP BY e.slug`,
+  ).bind(userId, since7d).all<{ slug: string; events: number; uniques: number }>();
+  const eventsBySlug = new Map<string, { events: number; uniques: number }>();
+  for (const r of eventsRows.results ?? []) eventsBySlug.set(r.slug, { events: r.events, uniques: r.uniques });
   const handle = await c.env.DB.prepare('SELECT handle FROM handles WHERE owner_user_id = ?1').bind(userId).first<{ handle: string }>();
   const keys = await c.env.DB.prepare(
     'SELECT prefix, label, created_at, last_used FROM api_keys WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 20',
@@ -174,6 +186,7 @@ pagesRouter.get('/dashboard', async (c) => {
     user,
     handle: handle?.handle ?? null,
     sites: (sites.results ?? []) as Site[],
+    siteAnalytics: eventsBySlug,
     keys: (keys.results ?? []) as ApiKeyRow[],
     drives: (drives.results ?? []) as DriveRow[],
     variables: (variables.results ?? []) as VarRow[],
@@ -281,6 +294,29 @@ pagesRouter.post('/dashboard/domains/:domain/delete', async (c) => {
   return c.redirect('/dashboard');
 });
 
+pagesRouter.post('/dashboard/sites/:slug/apps/:app/:action', async (c) => {
+  const userId = await readSession(c.env, c.req.header('cookie') ?? null);
+  if (!userId) return c.redirect('/signin');
+  const slug = c.req.param('slug');
+  const app = c.req.param('app');
+  const action = c.req.param('action');
+  if (action !== 'enable' && action !== 'disable') return c.redirect('/dashboard');
+  // Load current disabled set, mutate, write back. Cheap — owners flip this rarely.
+  const row = await c.env.DB.prepare(
+    `SELECT apps_disabled FROM sites WHERE slug = ?1 AND owner_user_id = ?2 AND status != 'deleted'`,
+  ).bind(slug, userId).first<{ apps_disabled: string | null }>();
+  if (!row) return c.redirect('/dashboard');
+  const set = new Set(parseDisabledApps(row.apps_disabled));
+  if (action === 'disable') set.add(app); else set.delete(app);
+  const next = set.size === 0 ? null : JSON.stringify([...set]);
+  await c.env.DB.prepare(
+    `UPDATE sites SET apps_disabled = ?1, updated_at = ?2 WHERE slug = ?3 AND owner_user_id = ?4`,
+  ).bind(next, Date.now(), slug, userId).run();
+  // KV cache holds the version id only — the apps_disabled lookup re-hits D1,
+  // so no invalidation needed.
+  return c.redirect('/dashboard');
+});
+
 pagesRouter.post('/dashboard/sites/:slug/delete', async (c) => {
   const userId = await readSession(c.env, c.req.header('cookie') ?? null);
   if (!userId) return c.redirect('/signin');
@@ -348,7 +384,7 @@ pagesRouter.post('/claim', async (c) => {
 });
 
 // ---------------- Renderers ----------------
-type Site = { slug: string; status: string; expires_at: number | null; spa_mode: number; forkable: number; viewer_title: string | null; updated_at: number };
+type Site = { slug: string; status: string; expires_at: number | null; spa_mode: number; forkable: number; viewer_title: string | null; updated_at: number; apps_disabled: string | null };
 type ApiKeyRow = { prefix: string; label: string | null; created_at: number; last_used: number | null };
 type DriveRow  = { id: string; name: string; is_default: number; created_at: number };
 type VarRow    = { name: string; pin_origin: string | null; updated_at: number };
@@ -392,6 +428,7 @@ function renderDashboard(data: {
   user: { email: string; plan: string; wallet: string | null };
   handle: string | null;
   sites: Site[];
+  siteAnalytics: Map<string, { events: number; uniques: number }>;
   keys: ApiKeyRow[];
   drives: DriveRow[];
   variables: VarRow[];
@@ -457,6 +494,8 @@ function renderDashboard(data: {
 <table><thead><tr><th>Slug</th><th>Title</th><th>Updated</th><th class="right"></th></tr></thead><tbody>${sitesRows}</tbody></table>
 </div>
 
+${renderAppsCard(data)}
+
 <div class="card">
 <h2>Drives</h2>
 <table><thead><tr><th>ID</th><th>Name</th><th>Created</th></tr></thead><tbody>${drivesRows}</tbody></table>
@@ -504,6 +543,43 @@ function renderDashboard(data: {
   <input type="text" name="label" placeholder="Label (e.g. laptop, ci)" style="flex:1;max-width:18rem">
   <button type="submit">Mint key</button>
 </form>
+</div>`;
+}
+
+function renderAppsCard(data: {
+  sites: Site[];
+  siteAnalytics: Map<string, { events: number; uniques: number }>;
+  apex: string;
+}): string {
+  if (data.sites.length === 0) return '';
+
+  const rows = data.sites.map((s) => {
+    const analytics = data.siteAnalytics.get(s.slug) ?? { events: 0, uniques: 0 };
+    const disabled = parseDisabledApps(s.apps_disabled).includes('analytics');
+    const toggleAction = disabled ? 'enable' : 'disable';
+    const toggleLabel = disabled ? 'Enable' : 'Disable';
+    return `
+      <tr>
+        <td><a href="https://${escapeHtml(s.slug)}.${escapeHtml(data.apex)}/" target="_blank" rel="noopener">${escapeHtml(s.slug)}</a></td>
+        <td>${disabled
+          ? `<span class="tag">disabled</span>`
+          : `<span class="cluster" style="gap:.4rem">
+              <strong>${analytics.events.toLocaleString()}</strong>
+              <span class="muted">events · ${analytics.uniques.toLocaleString()} unique · 7 d</span>
+            </span>`}</td>
+        <td class="right">
+          <form method="post" action="/dashboard/sites/${encodeURIComponent(s.slug)}/apps/analytics/${toggleAction}" style="display:inline">
+            <button class="btn ${disabled ? '' : 'btn--ghost'} btn--sm" type="submit">${toggleLabel}</button>
+          </form>
+        </td>
+      </tr>`;
+  }).join('');
+
+  return `
+<div class="card">
+<h2>Apps</h2>
+<p class="muted" style="margin:0 0 1rem">Analytics auto-injects a tiny beacon into served HTML — no setup. Disable per site to opt out; the endpoint stops accepting hits and the beacon is no longer injected.</p>
+<table><thead><tr><th>Slug</th><th>Analytics (7 d)</th><th class="right"></th></tr></thead><tbody>${rows}</tbody></table>
 </div>`;
 }
 

@@ -213,7 +213,13 @@ CLI_URL=$(echo "$CLI_OUT" | grep -oE 'https?://[^ ]+\.push-live\.com/' | head -1
 [[ -n "$CLI_URL" ]] || { red "CLI didn't print site URL: $CLI_OUT"; exit 1; }
 CLI_SLUG=$(echo "$CLI_URL" | sed -E 's|https?://([^.]+)\..*|\1|')
 CLI_SERVED=$(curl -fsS "$BASE/s/$CLI_SLUG/")
-assert "$CLI_SERVED" "$(cat $WORK/cli-site/index.html)" "CLI-published content served correctly"
+# Owned sites get the analytics beacon auto-injected before </body>, so the
+# served HTML legitimately differs from the uploaded one. Assert containment
+# instead of byte equality, and confirm the beacon is present.
+[[ "$CLI_SERVED" == *"$(cat $WORK/cli-site/index.html | sed -e 's|</body>.*||')"* ]] \
+  || { red "CLI-published content not served (got: $CLI_SERVED)"; exit 1; }
+[[ "$CLI_SERVED" == *"/__pl/analytics/beacon.js"* ]] \
+  || { red "analytics beacon not auto-injected into owned-site HTML"; exit 1; }
 green "  cli published $CLI_SLUG"
 
 step "Site update with hash-skip de-dup"
@@ -266,7 +272,10 @@ SPAVER=$(echo "$SPA_PUB" | python3 -c "import json,sys;print(json.load(sys.stdin
 SPAFIN=$(echo "$SPA_PUB" | python3 -c "import json,sys;print(json.load(sys.stdin)['upload']['finalizeUrl'])")
 curl -fsS -X POST "$SPAFIN" -H "authorization: Bearer $API_KEY" -H 'content-type: application/json' -d "{\"versionId\":\"$SPAVER\"}" >/dev/null
 GOT=$(curl -fsS "$BASE/s/$SPASLUG/some/deep/route")
-assert "$GOT" "$(cat $WORK/dd.html)" "SPA deep path falls back to index.html"
+# Owned site → analytics beacon is auto-injected, so byte-equality is too
+# strict. Assert the body contains the uploaded HTML and the beacon tag.
+[[ "$GOT" == *"<h1>dedupe target</h1>"* ]] || { red "SPA deep path didn't return index body (got: $GOT)"; exit 1; }
+[[ "$GOT" == *"/__pl/analytics/beacon.js"* ]] || { red "SPA fallback served HTML without injected beacon"; exit 1; }
 
 step "Quota: payload_too_large on huge anonymous upload"
 HUGE=$(( 251 * 1024 * 1024 ))
@@ -374,7 +383,7 @@ curl -fsS -X POST "$BASE/api/v1/links" \
   -H "authorization: Bearer $API_KEY" -H 'content-type: application/json' \
   -d "{\"slug\":\"$DDSLUG\",\"mount_path\":\"/\"}" >/dev/null
 SERVED=$(curl -fsS -H "Host: smokehandle.push-live.com" "$BASE/")
-assert "$SERVED" "$(cat $WORK/dd.html)" "handle.host serves linked site"
+[[ "$SERVED" == *"<h1>dedupe target</h1>"* ]] || { red "handle.host didn't serve linked site (got: $SERVED)"; exit 1; }
 
 step "Discovery surface: /openapi.json /llms.txt /.well-known/agent.json"
 curl -fsS "$BASE/openapi.json" | python3 -c "import json,sys;d=json.load(sys.stdin);assert d['openapi'].startswith('3.'),d"
@@ -552,7 +561,7 @@ GRANT=$(curl -fsS -X POST "$BASE/api/pay/$PSLUG/grant" \
   -d "{\"sessionId\":\"$SESSID\",\"txHash\":\"0xfaketx\"}")
 GTOK=$(echo "$GRANT" | python3 -c "import json,sys;print(json.load(sys.stdin)['grantToken'])")
 SERVED=$(curl -fsS "$BASE/s/$PSLUG/?__sl_grant=$GTOK" -L)
-assert "$SERVED" "$(cat $WORK/paid.html)" "paid site with valid grant returns content"
+[[ "$SERVED" == *"<h1>paid</h1>"* ]] || { red "paid site didn't return content after grant (got: $SERVED)"; exit 1; }
 
 green "
 ALL CHECKS PASSED ✓"

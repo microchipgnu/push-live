@@ -3,6 +3,8 @@ import { casKey, sha256Hex } from './lib/hash.ts';
 import { tryProxyRoute } from './proxy.ts';
 import { verifyGrantToken, loadSitePrice } from './routes/pay.ts';
 import { dispatchApp } from './apps/registry.ts';
+import { isAppEnabled } from './apps/types.ts';
+import { beaconScriptTag } from './apps/analytics.ts';
 
 const NOT_FOUND_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>Not found</title>
 <style>body{font:14px/1.5 system-ui;padding:6rem 2rem;max-width:40rem;margin:auto;color:#1a1a1a}</style></head>
@@ -50,6 +52,7 @@ type SiteRow = {
   viewer_description: string | null;
   viewer_og_image: string | null;
   owner_user_id: string | null;
+  apps_disabled: string | null;
 };
 
 export async function serveSite(
@@ -177,9 +180,13 @@ export async function serveSite(
   if (!obj) return new Response('Missing storage object', { status: 502 });
 
   const isHtml = file.content_type.includes('text/html');
-  if (isHtml && site.forkable && !range) {
-    const html = await obj.text();
-    const injected = injectForkButton(html, env.PUBLIC_APEX_HOST, slug);
+  const analyticsOn =
+    site.owner_user_id != null && isAppEnabled(site.apps_disabled, 'analytics');
+  const needsInjection = isHtml && !range && (site.forkable || analyticsOn);
+  if (needsInjection) {
+    let html = await obj.text();
+    if (site.forkable) html = injectForkButton(html, env.PUBLIC_APEX_HOST, slug);
+    if (analyticsOn) html = injectBeforeBodyClose(html, beaconScriptTag(appPathPrefix(req)));
     const headers = new Headers({
       'content-type': file.content_type,
       'cache-control': 'public, max-age=60',
@@ -187,7 +194,7 @@ export async function serveSite(
       'accept-ranges': 'bytes',
     });
     if (paymentGrantCookie) headers.append('set-cookie', paymentGrantCookie);
-    return new Response(injected, { headers });
+    return new Response(html, { headers });
   }
 
   const status = range ? 206 : 200;
@@ -242,7 +249,7 @@ async function loadSite(env: Env, slug: string): Promise<SiteRow | null> {
   const versionId = await env.KV.get(`site:${slug}:version`);
   if (versionId) {
     const row = await env.DB.prepare(
-      `SELECT status, expires_at, spa_mode, forkable, password_hash, price_amount, viewer_title, viewer_description, viewer_og_image, owner_user_id
+      `SELECT status, expires_at, spa_mode, forkable, password_hash, price_amount, viewer_title, viewer_description, viewer_og_image, owner_user_id, apps_disabled
        FROM sites WHERE slug = ?1`,
     )
       .bind(slug)
@@ -251,7 +258,7 @@ async function loadSite(env: Env, slug: string): Promise<SiteRow | null> {
     return { ...row, current_version_id: versionId };
   }
   const row = await env.DB.prepare(
-    `SELECT current_version_id, status, expires_at, spa_mode, forkable, password_hash, price_amount, viewer_title, viewer_description, viewer_og_image, owner_user_id
+    `SELECT current_version_id, status, expires_at, spa_mode, forkable, password_hash, price_amount, viewer_title, viewer_description, viewer_og_image, owner_user_id, apps_disabled
      FROM sites WHERE slug = ?1`,
   )
     .bind(slug)
@@ -439,10 +446,23 @@ async function serveRawFile(env: Env, versionId: string, path: string): Promise<
 }
 
 function injectForkButton(html: string, host: string, slug: string): string {
-  const snippet = FORK_BUTTON_SNIPPET(host, slug);
+  return injectBeforeBodyClose(html, FORK_BUTTON_SNIPPET(host, slug));
+}
+
+function injectBeforeBodyClose(html: string, snippet: string): string {
   const idx = html.toLowerCase().lastIndexOf('</body>');
   if (idx < 0) return html + snippet;
   return html.slice(0, idx) + snippet + html.slice(idx);
+}
+
+// When a site is reached via the /s/<slug>/ preview path, app URLs need
+// the same prefix so the browser's "/__pl/..." resolution doesn't miss
+// the slug context. Returns "" for slug subdomain or custom-domain
+// requests so the existing URL shape keeps working.
+function appPathPrefix(req: Request): string {
+  const p = new URL(req.url).pathname;
+  const m = /^\/s\/[a-z0-9][a-z0-9-]*/.exec(p);
+  return m ? m[0] : '';
 }
 
 function htmlResponse(body: string, status = 200): Response {

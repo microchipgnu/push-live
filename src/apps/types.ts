@@ -20,3 +20,19 @@ export type AppContext = {
   subPath: string;
   req: Request;
 };
+
+// Per-site app enablement. `apps_disabled` is stored as a JSON array of
+// app ids on the sites table; NULL means use defaults (analytics on,
+// nothing else). Anonymous sites bypass apps entirely.
+export function parseDisabledApps(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw) as unknown;
+    if (Array.isArray(arr)) return arr.filter((x): x is string => typeof x === 'string');
+  } catch { /* fall through */ }
+  return [];
+}
+
+export function isAppEnabled(appsDisabled: string | null | undefined, appId: string): boolean {
+  return !parseDisabledApps(appsDisabled).includes(appId);
+}

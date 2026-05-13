@@ -2,6 +2,7 @@ import type { App, AppContext } from './types.ts';
 import type { Env } from '../types.ts';
 import { sha256Hex } from '../lib/hash.ts';
 import { userPlan } from '../lib/quotas.ts';
+import { isAppEnabled } from './types.ts';
 
 // Inline to avoid circular import with registry.ts.
 function jsonError(code: string, message: string, status: number): Response {
@@ -22,9 +23,38 @@ export const analyticsApp: App = {
   async handle(ctx) {
     if (ctx.req.method === 'POST' && ctx.subPath === '/hit') return handleHit(ctx);
     if (ctx.req.method === 'GET'  && ctx.subPath === '/hit') return handleHitGet(ctx);   // <img> beacon fallback
+    if (ctx.req.method === 'GET'  && ctx.subPath === '/beacon.js') return serveBeacon();
     return jsonError('not_found', `analytics: ${ctx.req.method} ${ctx.subPath} not handled`, 404);
   },
 };
+
+// Beacon script auto-injected into served HTML. Uses sendBeacon when
+// available (survives page-unload), falls back to keepalive fetch.
+// Derives the hit URL from its own <script src> so it works regardless of
+// how the site is served (slug subdomain, custom domain, /s/<slug>/ preview).
+// Kept short so injection adds ~400 bytes to every page.
+// document.currentScript is null for async scripts, so walk document.scripts
+// to find our own tag and derive the hit URL from its src.
+const BEACON_JS = `(function(){try{var u='/__pl/analytics/hit';var ss=document.scripts||[];for(var i=ss.length-1;i>=0;i--){var s=ss[i].src||'';if(s.indexOf('/__pl/analytics/beacon.js')>=0){u=s.replace(/\\/beacon\\.js(\\?.*)?$/,'/hit');break;}}var p=JSON.stringify({path:location.pathname,referrer:document.referrer||null});if(navigator.sendBeacon){navigator.sendBeacon(u,new Blob([p],{type:'application/json'}))}else{fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:p,keepalive:true}).catch(function(){})}}catch(_){}})();`;
+
+function serveBeacon(): Response {
+  return new Response(BEACON_JS, {
+    status: 200,
+    headers: {
+      'content-type': 'application/javascript; charset=utf-8',
+      'cache-control': 'public, max-age=3600',
+    },
+  });
+}
+
+// Marker the serve layer uses to decide whether to inject the beacon. The
+// raw HTML snippet lives here (not in serve.ts) so anyone reading this
+// app sees the full surface area in one file. Takes a pathPrefix because
+// the same site can be reached via /s/<slug>/ preview as well as its
+// own subdomain — the script src has to follow.
+export function beaconScriptTag(pathPrefix: string): string {
+  return `<script src="${pathPrefix}/__pl/analytics/beacon.js" async></script>`;
+}
 
 // POST /__pl/analytics/hit
 // Body (optional JSON): { path, referrer, screen? }. Anything missing
@@ -121,17 +151,23 @@ async function passRateLimit(env: Env, slug: string, ip: string): Promise<boolea
   return true;
 }
 
-// Monthly quota — looked up by owner plan. Anonymous sites get nothing.
+// Monthly quota and per-site enablement check. Reads owner + apps_disabled
+// in one row so a typical hit only touches D1 twice (this read + the insert).
 async function passQuota(env: Env, slug: string, ownerUserId: string | null): Promise<boolean> {
   if (!ownerUserId) return false;
+  const row = await env.DB.prepare(
+    `SELECT apps_disabled FROM sites WHERE slug = ?1 AND status != 'deleted'`,
+  ).bind(slug).first<{ apps_disabled: string | null }>();
+  if (!row) return false;
+  if (!isAppEnabled(row.apps_disabled, 'analytics')) return false;
   const plan = await userPlan(env, ownerUserId);
   if (plan.appAnalyticsEventsPerMonth <= 0) return false;
   const monthStart = startOfMonthMs();
-  const row = await env.DB.prepare(
+  const count = await env.DB.prepare(
     `SELECT COUNT(*) AS n FROM site_app_events
      WHERE slug = ?1 AND app = 'analytics' AND ts >= ?2`,
   ).bind(slug, monthStart).first<{ n: number }>();
-  return (row?.n ?? 0) < plan.appAnalyticsEventsPerMonth;
+  return (count?.n ?? 0) < plan.appAnalyticsEventsPerMonth;
 }
 
 function startOfMonthMs(): number {
