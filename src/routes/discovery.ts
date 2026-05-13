@@ -415,6 +415,7 @@ curl -sS https://${escapeHtml(host)}/api/auth/agent/verify-code -d '{"email":"yo
   <li><strong>Developer</strong> · 2 TB storage · unlimited sites · 2 GB max file · 10 drives · 20 domains · 90-day history.</li>
   <li><strong>Variables</strong> · 50 per account · 4 KB per value · optional <code>allowedUpstreams</code> allow-list.</li>
   <li><strong>Proxy</strong> · 10 MB per response · default 100 req/hr/IP per route; override with <code>rateLimit</code>.</li>
+  <li><strong>Apps · Analytics</strong> · 0 / 10 k / 100 k / 1 M events per month per site · 60 hits/min/IP.</li>
 </ul>
 
 <h2 id="errors">Error envelope</h2>
@@ -429,6 +430,19 @@ curl -sS https://${escapeHtml(host)}/api/auth/agent/verify-code -d '{"email":"yo
 
 <h2 id="payments">Payments</h2>
 <p class="muted">Site owners set a price + payout wallet; visitors pay that wallet directly. push-live never holds keys or signs transactions — it observes the on-chain transfer and grants access. Flow: <code>POST /api/pay/:slug/session</code> → visitor sends USDC to the returned address → <code>POST /api/pay/:slug/grant</code> with the txHash (or the browser-friendly <code>GET /api/pay/:slug/confirm</code> with <code>?session=&amp;tx=</code>).</p>
+
+<h2 id="apps">Apps</h2>
+<p class="muted">Server-side capabilities your hosted site can call from its own JS. Endpoints live at <code>/__pl/&lt;app&gt;/...</code> on the site's host (slug subdomain or custom domain). No SDK, no setup — fetch the URL.</p>
+<p><strong>Analytics</strong> · count page hits and unique visitors per site. No external SDK; no cookies. Visitor identity is a per-day, per-site rotating hash so visits aren't linkable across days.</p>
+<pre><code>// In your site's JS:
+fetch('/__pl/analytics/hit', { method: 'POST', body: JSON.stringify({ path: location.pathname }) });
+
+// Or as a beacon image (works without JS):
+&lt;img src="/__pl/analytics/hit?path=/" width="1" height="1" alt=""&gt;</code></pre>
+<p>Read the summary as the site owner:</p>
+<pre><code>curl -sS https://${escapeHtml(host)}/api/v1/publish/&lt;slug&gt;/analytics?period=7d \\
+  -H 'authorization: Bearer &lt;API_KEY&gt;'</code></pre>
+<p class="muted">Caps per plan (events/month, per site): anonymous 0 · free 10 000 · hobby 100 000 · developer 1 000 000. Over-quota writes are silently dropped — the visitor never sees an error.</p>
 
 <h2>Endpoints</h2>
 <p class="muted"><span class="tag tag--yellow">auth</span> means a bearer token is required.</p>
@@ -529,6 +543,10 @@ function buildLlmsText(host: string, full: boolean): string {
     `- Set forkable: true to expose /.push-live/manifest.json and /.push-live/raw/<path>, and inject a fork button in served HTML.`,
     `- Ship a .push-live/proxy.json file with shape: { "routes": [{ "match": "/api/x", "upstream": "https://upstream", "headers": { "Authorization": "Bearer \${MY_KEY}" }, "rateLimit": "20/hour/ip" }] }.`,
     `- Variables are interpolated server-side from the encrypted store. A variable with allowedUpstreams refuses to interpolate if the route's upstream host is not on its allow-list.`,
+    ``,
+    `## Apps`,
+    `Server-side capabilities a hosted site can call from its own JS, at /__pl/<app>/... on the site's host. No SDK, no setup.`,
+    `- Analytics: POST /__pl/analytics/hit (anonymous, JSON body { path?, referrer?, screen? }), or GET /__pl/analytics/hit?path=/ as an image beacon. Daily-rotating visitor hash; no IP or UA stored. Owner reads at GET /api/v1/publish/:slug/analytics?period=7d.`,
   ]).join('\n');
 }
 
@@ -758,7 +776,7 @@ function buildOpenApi(host: string): unknown {
     servers: [{ url: `https://${host}` }],
     tags: [
       { name: 'Auth' }, { name: 'Sites' }, { name: 'Drives' },
-      { name: 'Domains' }, { name: 'Variables' }, { name: 'Payments' }, { name: 'Support' },
+      { name: 'Domains' }, { name: 'Variables' }, { name: 'Payments' }, { name: 'Apps' }, { name: 'Support' },
     ],
     paths: {
       '/api/auth/agent/request-code': { post: opAuth('Auth', 'Request an email sign-in code', { email: 'string' }) },
@@ -776,6 +794,7 @@ function buildOpenApi(host: string): unknown {
       '/api/v1/publish/{slug}/duplicate':        { post: op('Sites', 'Server-side copy',            { params: ['slug'] }) },
       '/api/v1/publish/from-drive':              { post: op('Sites', 'Publish a Drive snapshot as a Site') },
       '/api/v1/publishes':                       { get:  op('Sites', 'List account Sites') },
+      '/api/v1/publish/{slug}/analytics':        { get:  op('Apps', 'Analytics summary for a Site (period=1d/7d/30d/90d)', { params: ['slug'], query: { period: 'string' } }) },
       '/api/v1/drives':                          { get: op('Drives', 'List Drives'), post: op('Drives', 'Create Drive') },
       '/api/v1/drives/default':                  { get: op('Drives', 'Get or create the default Drive') },
       '/api/v1/drives/{driveId}': {

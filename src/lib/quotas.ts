@@ -11,6 +11,8 @@ export type Plan = {
   maxFileDriveBytes: number;
   driveHistoryDays: number;
   publishesPerHour: number;
+  // App quotas (see src/apps/). 0 disables the app for this plan.
+  appAnalyticsEventsPerMonth: number;
 };
 
 export const PLANS: Record<string, Plan> = {
@@ -24,6 +26,7 @@ export const PLANS: Record<string, Plan> = {
     maxFileDriveBytes: 0,
     driveHistoryDays: 0,
     publishesPerHour: 60,
+    appAnalyticsEventsPerMonth: 0,                  // apps disabled for anon
   },
   free: {
     name: 'free',
@@ -35,6 +38,7 @@ export const PLANS: Record<string, Plan> = {
     maxFileDriveBytes: 500 * 1024 * 1024,
     driveHistoryDays: 7,
     publishesPerHour: 60,
+    appAnalyticsEventsPerMonth: 10_000,             // ~330 hits/day/site
   },
   hobby: {
     name: 'hobby',
@@ -46,6 +50,7 @@ export const PLANS: Record<string, Plan> = {
     maxFileDriveBytes: 500 * 1024 * 1024,
     driveHistoryDays: 30,
     publishesPerHour: 200,
+    appAnalyticsEventsPerMonth: 100_000,
   },
   developer: {
     name: 'developer',
@@ -57,6 +62,7 @@ export const PLANS: Record<string, Plan> = {
     maxFileDriveBytes: 500 * 1024 * 1024,
     driveHistoryDays: 90,
     publishesPerHour: 200,
+    appAnalyticsEventsPerMonth: 1_000_000,
   },
 };
 

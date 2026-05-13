@@ -2,6 +2,7 @@ import type { Env } from './types.ts';
 import { casKey, sha256Hex } from './lib/hash.ts';
 import { tryProxyRoute } from './proxy.ts';
 import { verifyGrantToken, loadSitePrice } from './routes/pay.ts';
+import { dispatchApp } from './apps/registry.ts';
 
 const NOT_FOUND_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>Not found</title>
 <style>body{font:14px/1.5 system-ui;padding:6rem 2rem;max-width:40rem;margin:auto;color:#1a1a1a}</style></head>
@@ -65,6 +66,14 @@ export async function serveSite(
     return new Response('Site expired', { status: 410 });
   }
   const versionId = site.current_version_id;
+
+  // ----- Apps (/__pl/<id>/...) -----
+  // Handled before any other surface so a site can't accidentally shadow
+  // an app endpoint with a file at the same path.
+  if (pathname.startsWith('/__pl/')) {
+    const res = await dispatchApp(env, slug, site.owner_user_id, pathname, req);
+    if (res) return res;
+  }
 
   // ----- Fork helpers -----
   if (pathname === '/.push-live/manifest.json') {

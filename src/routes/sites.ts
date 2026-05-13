@@ -7,6 +7,7 @@ import { newSlug, newVersionId, newToken } from '../lib/ids.ts';
 import { casKey, sha256Hex } from '../lib/hash.ts';
 import { uploadUrlFor } from '../lib/r2-presign.ts';
 import { userPlan, planFor, siteCount, totalStorageBytes, checkPublishRate, rateLimitResponse } from '../lib/quotas.ts';
+import { loadAnalyticsSummary } from '../apps/analytics.ts';
 
 type AppCtx = Context<{ Bindings: Env }>;
 
@@ -50,6 +51,7 @@ sitesRouter.post('/api/v1/publish/:slug/duplicate', auth({ required: true }), du
 sitesRouter.get('/api/v1/publishes', auth({ required: true }), listSites);
 sitesRouter.get('/api/v1/publish/:slug', auth({ required: true }), getSite);
 sitesRouter.delete('/api/v1/publish/:slug', auth({ required: true }), deleteSite);
+sitesRouter.get('/api/v1/publish/:slug/analytics', auth({ required: true }), getAnalytics);
 
 // /api/v1/artifact* aliases — same handlers, schema.org-friendly noun.
 sitesRouter.post('/api/v1/artifact/from-drive', auth({ required: true }), publishFromDrive);
@@ -523,6 +525,28 @@ async function deleteSite(c: AppCtx) {
   if (res.meta.changes === 0) return c.json(errBody('not_found', 'Site not found'), 404);
   await c.env.KV.delete(`site:${slug}:version`);
   return c.json({ success: true });
+}
+
+async function getAnalytics(c: AppCtx) {
+  const u = requireUser(c);
+  if (u instanceof Response) return u;
+  const slug = c.req.param('slug');
+  if (!slug) return c.json(errBody('invalid_request', 'slug required'), 400);
+  const owned = await c.env.DB.prepare(
+    `SELECT 1 AS ok FROM sites WHERE slug = ?1 AND owner_user_id = ?2 AND status != 'deleted'`,
+  ).bind(slug, u.userId).first<{ ok: number }>();
+  if (!owned) return c.json(errBody('not_found', 'Site not found'), 404);
+
+  // period= accepts 1d/7d/30d/90d. Defaults to 7d, capped at 90d to keep the
+  // query bounded.
+  const raw = c.req.query('period') ?? '7d';
+  const m = /^(\d+)d$/.exec(raw);
+  let days = m ? parseInt(m[1], 10) : 7;
+  if (!Number.isFinite(days) || days <= 0) days = 7;
+  if (days > 90) days = 90;
+
+  const summary = await loadAnalyticsSummary(c.env, slug, days);
+  return c.json(summary);
 }
 
 const PublishFromDriveSchema = z.object({
