@@ -43,6 +43,24 @@ export function requireUser(c: Context<{ Bindings: Env }>): { userId: string } |
   return { userId: a.userId };
 }
 
+// Stable error envelope. Every error gets a docs_url pointing at the
+// relevant /docs anchor so a caller can route a fix from the response alone.
+// The URL is relative so it follows whatever host the worker is serving on
+// (apex, dev, custom domain) without threading env through every call site.
+const DOCS_ANCHOR: Record<string, string> = {
+  unauthorized: 'auth',
+  invalid_request: 'errors',
+  not_found: 'errors',
+  conflict: 'errors',
+  gone: 'errors',
+  precondition_failed: 'errors',
+  payload_too_large: 'limits',
+  quota_exceeded: 'limits',
+  rate_limit_exceeded: 'limits',
+  payment_required: 'payments',
+};
+
 export function errBody(code: string, message: string, extra: Record<string, unknown> = {}) {
-  return { error: message, code, message, ...extra };
+  const docs_url = `/docs#${DOCS_ANCHOR[code] ?? 'errors'}`;
+  return { error: message, code, message, docs_url, ...extra };
 }

@@ -18,9 +18,36 @@ const app = new Hono<{ Bindings: Env }>();
 
 app.use('*', cors({ origin: '*', allowHeaders: ['authorization', 'content-type', 'x-push-live-client'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
 
-app.get('/', (c) =>
-  c.html(LANDING_HTML(c.env.PUBLIC_APEX_HOST)),
-);
+app.get('/', (c) => {
+  // ?mode=agent returns the structured agent view (JSON pointer-set) instead
+  // of the marketing HTML. Same trick as /index.md but for clients that
+  // prefer a single JSON.
+  const mode = c.req.query('mode');
+  const accept = c.req.header('accept') ?? '';
+  const wantsAgent = mode === 'agent' || (accept.includes('application/json') && !accept.includes('text/html'));
+  if (wantsAgent) {
+    const host = c.env.PUBLIC_APEX_HOST;
+    const base = `https://${host}`;
+    return c.json({
+      name: 'push-live',
+      description: 'Publish static sites and store private agent files. Anonymous in 24 hours, permanent with a key.',
+      url: base,
+      docs: `${base}/docs`,
+      docs_llms: `${base}/llms.txt`,
+      docs_llms_full: `${base}/llms-full.txt`,
+      docs_md: `${base}/index.md`,
+      openapi: `${base}/openapi.json`,
+      agent_card: `${base}/.well-known/agent-card.json`,
+      pricing: `${base}/pricing.md`,
+      skill: `${base}/skill.md`,
+      bootstrap: {
+        request_code: `${base}/api/auth/agent/request-code`,
+        verify_code: `${base}/api/auth/agent/verify-code`,
+      },
+    });
+  }
+  return c.html(LANDING_HTML(c.env.PUBLIC_APEX_HOST));
+});
 
 app.get('/health', (c) => c.json({ ok: true }));
 

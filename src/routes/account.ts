@@ -35,9 +35,16 @@ accountRouter.patch('/api/v1/wallet', auth({ required: true }), async (c) => {
 });
 
 // ------------ Variables (encrypted at rest) ------------
+// Values are capped at 4 KB and accounts hold at most 50 variables; both
+// keep proxy abuse contained. `allowedUpstreams` is the modern allow-list
+// (array of hostnames, wildcards permitted). `pinToUpstreamOrigin` is the
+// legacy single-hostname form, kept for older callers.
+const VARIABLE_VALUE_MAX_BYTES = 4 * 1024;
+const VARIABLE_COUNT_MAX = 50;
 const VarSetSchema = z.object({
-  value: z.string().min(1).max(10_000),
+  value: z.string().min(1).max(VARIABLE_VALUE_MAX_BYTES),
   pinToUpstreamOrigin: z.string().max(255).optional(),
+  allowedUpstreams: z.array(z.string().max(255)).max(20).optional(),
 });
 
 accountRouter.get('/api/v1/me/variables', auth({ required: true }), async (c) => {
@@ -45,9 +52,26 @@ accountRouter.get('/api/v1/me/variables', auth({ required: true }), async (c) =>
   if (u instanceof Response) return u;
   const rows = await c.env.DB.prepare(
     `SELECT name, pin_origin, updated_at FROM variables WHERE owner_user_id = ?1 ORDER BY name`,
-  ).bind(u.userId).all();
-  return c.json({ variables: rows.results ?? [] });
+  ).bind(u.userId).all<{ name: string; pin_origin: string | null; updated_at: number }>();
+  const variables = (rows.results ?? []).map((r) => ({
+    name: r.name,
+    allowedUpstreams: parseAllowedUpstreams(r.pin_origin),
+    updated_at: r.updated_at,
+  }));
+  return c.json({ variables, count: variables.length, limit: VARIABLE_COUNT_MAX });
 });
+
+function parseAllowedUpstreams(raw: string | null): string[] {
+  if (!raw) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const arr = JSON.parse(trimmed) as unknown;
+      if (Array.isArray(arr)) return arr.filter((x): x is string => typeof x === 'string');
+    } catch { /* legacy single-origin form */ }
+  }
+  return [trimmed];
+}
 
 accountRouter.put('/api/v1/me/variables/:name', auth({ required: true }), async (c) => {
   const u = requireUser(c);
@@ -59,15 +83,35 @@ accountRouter.put('/api/v1/me/variables/:name', auth({ required: true }), async 
   const body = await c.req.json().catch(() => null);
   const parsed = VarSetSchema.safeParse(body);
   if (!parsed.success) return c.json(errBody('invalid_request', parsed.error.message), 400);
+
+  // Enforce per-account variable count. Skip the check on overwrite (same name
+  // already exists) so updates don't count against quota.
+  const existing = await c.env.DB.prepare(
+    `SELECT 1 AS hit FROM variables WHERE owner_user_id = ?1 AND name = ?2`,
+  ).bind(u.userId, name).first<{ hit: number }>();
+  if (!existing) {
+    const count = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM variables WHERE owner_user_id = ?1`,
+    ).bind(u.userId).first<{ n: number }>();
+    if ((count?.n ?? 0) >= VARIABLE_COUNT_MAX) {
+      return c.json(errBody('quota_exceeded', `Variable limit reached (${VARIABLE_COUNT_MAX}). Delete one before adding another.`), 402);
+    }
+  }
+
+  // Encode allowedUpstreams as JSON in the pin_origin column. Legacy
+  // pinToUpstreamOrigin maps to a single-entry list for forward compatibility.
+  const allow = parsed.data.allowedUpstreams ?? (parsed.data.pinToUpstreamOrigin ? [parsed.data.pinToUpstreamOrigin] : []);
+  const pinOrigin = allow.length > 0 ? JSON.stringify(allow) : null;
+
   const enc = await encryptValue(c.env.SIGNING_KEY, parsed.data.value);
   await c.env.DB.prepare(
     `INSERT INTO variables (owner_user_id, name, value_encrypted, pin_origin, updated_at)
      VALUES (?1, ?2, ?3, ?4, ?5)
      ON CONFLICT(owner_user_id, name) DO UPDATE SET value_encrypted = ?3, pin_origin = ?4, updated_at = ?5`,
   )
-    .bind(u.userId, name, enc, parsed.data.pinToUpstreamOrigin ?? null, Date.now())
+    .bind(u.userId, name, enc, pinOrigin, Date.now())
     .run();
-  return c.json({ name, pinToUpstreamOrigin: parsed.data.pinToUpstreamOrigin ?? null });
+  return c.json({ name, allowedUpstreams: allow });
 });
 
 accountRouter.delete('/api/v1/me/variables/:name', auth({ required: true }), async (c) => {

@@ -51,6 +51,19 @@ sitesRouter.get('/api/v1/publishes', auth({ required: true }), listSites);
 sitesRouter.get('/api/v1/publish/:slug', auth({ required: true }), getSite);
 sitesRouter.delete('/api/v1/publish/:slug', auth({ required: true }), deleteSite);
 
+// /api/v1/artifact* aliases — same handlers, schema.org-friendly noun.
+sitesRouter.post('/api/v1/artifact/from-drive', auth({ required: true }), publishFromDrive);
+sitesRouter.post('/api/v1/artifact', auth(), createOrUpdate(null));
+sitesRouter.put('/api/v1/artifact/:slug', auth(), createOrUpdate('update'));
+sitesRouter.post('/api/v1/artifact/:slug/finalize', auth(), finalize);
+sitesRouter.post('/api/v1/artifact/:slug/uploads/refresh', auth(), refreshUploads);
+sitesRouter.post('/api/v1/artifact/:slug/claim', auth({ required: true }), claim);
+sitesRouter.patch('/api/v1/artifact/:slug/metadata', auth({ required: true }), patchMetadata);
+sitesRouter.post('/api/v1/artifact/:slug/duplicate', auth({ required: true }), duplicateSite);
+sitesRouter.get('/api/v1/artifacts', auth({ required: true }), listSites);
+sitesRouter.get('/api/v1/artifact/:slug', auth({ required: true }), getSite);
+sitesRouter.delete('/api/v1/artifact/:slug', auth({ required: true }), deleteSite);
+
 const MetadataPatchSchema = z.object({
   ttlSeconds: z.number().int().positive().nullable().optional(),
   viewer: z

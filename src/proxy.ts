@@ -11,10 +11,13 @@ type ProxyRoute = {
   stripHeaders?: string[];             // request headers to strip before forwarding
   passQuery?: boolean;                 // default true
   timeoutMs?: number;                  // upstream fetch timeout; default 30s, max 120s
+  rateLimit?: string;                  // "20/hour/ip" or "100/min/ip" — default DEFAULT_RATE_LIMIT
 };
 
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 30_000;
 const MAX_UPSTREAM_TIMEOUT_MS = 120_000;
+const DEFAULT_RATE_LIMIT = '100/hour/ip';
+const PROXY_BODY_CAP_BYTES = 10 * 1024 * 1024;
 
 type ProxyManifest = {
   routes: ProxyRoute[];
@@ -62,16 +65,42 @@ export async function tryProxyRoute(
   const route = pickRoute(manifest, pathname, req.method);
   if (!route) return null;
 
+  // Per-route rate limit (default 100/hr/ip). KV-backed, second-resolution.
+  const ip = req.headers.get('cf-connecting-ip') ?? 'unknown';
+  const limit = parseRateLimit(route.rateLimit ?? DEFAULT_RATE_LIMIT);
+  if (limit) {
+    const rlKey = `rl:proxy:${slug}:${route.match}:${limit.scope === 'ip' ? ip : 'all'}`;
+    const wait = await checkProxyRate(env, rlKey, limit);
+    if (wait > 0) {
+      return new Response(
+        JSON.stringify({ error: 'Proxy rate exceeded', code: 'rate_limit_exceeded', retry_after: wait, docs_url: '/docs#limits' }),
+        { status: 429, headers: { 'content-type': 'application/json', 'retry-after': String(wait) } },
+      );
+    }
+  }
+
   // Load and decrypt any required variables
   const vars: Record<string, string> = {};
   const refs = collectVarRefs(route);
+  const upstreamHost = (() => {
+    try { return new URL(route.upstream).host; } catch { return ''; }
+  })();
   if (refs.size > 0) {
     if (!ownerUserId) return new Response('Proxy variables require an authenticated site', { status: 502 });
     const placeholders = [...refs].map((_, i) => `?${i + 2}`).join(',');
     const rows = await env.DB.prepare(
-      `SELECT name, value_encrypted FROM variables WHERE owner_user_id = ?1 AND name IN (${placeholders})`,
-    ).bind(ownerUserId, ...refs).all<{ name: string; value_encrypted: string }>();
+      `SELECT name, value_encrypted, pin_origin FROM variables WHERE owner_user_id = ?1 AND name IN (${placeholders})`,
+    ).bind(ownerUserId, ...refs).all<{ name: string; value_encrypted: string; pin_origin: string | null }>();
     for (const r of rows.results ?? []) {
+      // allowedUpstreams gate: if the variable was created with an allow-list,
+      // refuse to expand it when the proxy route's upstream host isn't on it.
+      // pin_origin stores either a single hostname (legacy) or a JSON array.
+      if (r.pin_origin && upstreamHost) {
+        const allowed = parseAllowedUpstreams(r.pin_origin);
+        if (allowed.length > 0 && !allowed.some((h) => hostMatches(upstreamHost, h))) {
+          return new Response(`Variable ${r.name} is not allowed for upstream ${upstreamHost}`, { status: 502 });
+        }
+      }
       try {
         vars[r.name] = await decryptValue(env.SIGNING_KEY, r.value_encrypted);
       } catch {
@@ -130,6 +159,14 @@ export async function tryProxyRoute(
     );
   }
 
+  // 10 MB response cap: reject up front via content-length, and also wrap the
+  // body stream so streaming responses get cut off if they exceed the budget.
+  const declaredLen = parseInt(upstreamRes.headers.get('content-length') ?? '', 10);
+  if (Number.isFinite(declaredLen) && declaredLen > PROXY_BODY_CAP_BYTES) {
+    return new Response(`Upstream response exceeds ${PROXY_BODY_CAP_BYTES} byte cap`, { status: 502 });
+  }
+  const cappedBody = upstreamRes.body ? capStream(upstreamRes.body, PROXY_BODY_CAP_BYTES) : null;
+
   // Strip headers that would confuse the browser when streaming
   const outHeaders = new Headers();
   for (const [k, v] of upstreamRes.headers) {
@@ -137,7 +174,7 @@ export async function tryProxyRoute(
     outHeaders.set(k, v);
   }
   outHeaders.set('x-push-live-proxy', 'true');
-  return new Response(upstreamRes.body, {
+  return new Response(cappedBody, {
     status: upstreamRes.status,
     statusText: upstreamRes.statusText,
     headers: outHeaders,
@@ -175,4 +212,78 @@ function collectVarRefs(route: ProxyRoute): Set<string> {
 
 function interpolate(template: string, vars: Record<string, string>): string {
   return template.replace(/\$\{([A-Z][A-Z0-9_]*)\}/g, (_, name) => vars[name] ?? '');
+}
+
+type RateLimit = { count: number; windowSeconds: number; scope: 'ip' | 'all' };
+function parseRateLimit(spec: string): RateLimit | null {
+  const m = /^\s*(\d+)\s*\/\s*(sec(?:ond)?|min(?:ute)?|hour)\s*(?:\/\s*(ip|all))?\s*$/i.exec(spec);
+  if (!m) return null;
+  const count = parseInt(m[1], 10);
+  const unit = m[2].toLowerCase();
+  const windowSeconds = unit.startsWith('sec') ? 1 : unit.startsWith('min') ? 60 : 3600;
+  const scope = (m[3]?.toLowerCase() === 'all' ? 'all' : 'ip') as 'ip' | 'all';
+  if (!Number.isFinite(count) || count <= 0) return null;
+  return { count, windowSeconds, scope };
+}
+
+async function checkProxyRate(env: Env, key: string, limit: RateLimit): Promise<number> {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = now - limit.windowSeconds;
+  const raw = await env.KV.get(key);
+  let stamps: number[] = [];
+  if (raw) {
+    try { stamps = JSON.parse(raw) as number[]; } catch { stamps = []; }
+  }
+  stamps = stamps.filter((t) => t > windowStart);
+  if (stamps.length >= limit.count) {
+    return Math.max(1, (stamps[0] + limit.windowSeconds) - now);
+  }
+  stamps.push(now);
+  await env.KV.put(key, JSON.stringify(stamps), { expirationTtl: limit.windowSeconds + 60 });
+  return 0;
+}
+
+function parseAllowedUpstreams(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const arr = JSON.parse(trimmed) as unknown;
+      if (Array.isArray(arr)) return arr.filter((x): x is string => typeof x === 'string');
+    } catch { /* fall through */ }
+  }
+  // Legacy single-origin form: store-as-is, treat as one-entry allow-list.
+  return [trimmed];
+}
+
+function hostMatches(actual: string, allowed: string): boolean {
+  if (actual === allowed) return true;
+  // Allow "*.example.com" to match any subdomain.
+  if (allowed.startsWith('*.')) {
+    const base = allowed.slice(2);
+    return actual === base || actual.endsWith('.' + base);
+  }
+  return false;
+}
+
+// Cuts off a ReadableStream at a byte budget. Once the budget is exceeded the
+// downstream consumer sees a clean end-of-stream rather than a runaway body.
+function capStream(input: ReadableStream<Uint8Array>, maxBytes: number): ReadableStream<Uint8Array> {
+  let read = 0;
+  const reader = input.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { value, done } = await reader.read();
+      if (done) { controller.close(); return; }
+      if (read + value.byteLength > maxBytes) {
+        const remaining = Math.max(0, maxBytes - read);
+        if (remaining > 0) controller.enqueue(value.subarray(0, remaining));
+        controller.close();
+        reader.cancel().catch(() => {});
+        return;
+      }
+      read += value.byteLength;
+      controller.enqueue(value);
+    },
+    cancel(reason) { reader.cancel(reason).catch(() => {}); },
+  });
 }
