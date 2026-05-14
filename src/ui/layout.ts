@@ -156,20 +156,82 @@ const FONT_PRECONNECT = `
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">`;
 
-export function head(title: string, extraStyle = ''): string {
-  return `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHtml(title)}</title>
+export type HeadMeta = {
+  extraStyle?: string;
+  description?: string;
+  canonical?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  ogType?: string;
+  twitterCard?: 'summary' | 'summary_large_image';
+  jsonLd?: unknown | unknown[];
+};
+
+// head() accepts either a legacy CSS-string second arg (backward compat with
+// callers that just pass extraStyle) or a HeadMeta object that fills in
+// description / canonical / OG / Twitter / JSON-LD. AEO scanners look at the
+// rendered HTML, so anything we want them to see has to be inline here.
+export function head(title: string, meta: HeadMeta | string = {}): string {
+  const m: HeadMeta = typeof meta === 'string' ? { extraStyle: meta } : meta;
+  const t = escapeHtml(title);
+
+  const metaTags: string[] = [
+    `<meta charset="utf-8">`,
+    `<meta name="viewport" content="width=device-width,initial-scale=1">`,
+    `<title>${t}</title>`,
+  ];
+  if (m.description) metaTags.push(`<meta name="description" content="${escapeHtml(m.description)}">`);
+  if (m.canonical) metaTags.push(`<link rel="canonical" href="${escapeHtml(m.canonical)}">`);
+
+  // Open Graph
+  metaTags.push(`<meta property="og:title" content="${escapeHtml(m.ogTitle ?? title)}">`);
+  if (m.description || m.ogDescription) {
+    metaTags.push(`<meta property="og:description" content="${escapeHtml(m.ogDescription ?? m.description ?? '')}">`);
+  }
+  metaTags.push(`<meta property="og:type" content="${escapeHtml(m.ogType ?? 'website')}">`);
+  if (m.canonical) metaTags.push(`<meta property="og:url" content="${escapeHtml(m.canonical)}">`);
+  if (m.ogImage) metaTags.push(`<meta property="og:image" content="${escapeHtml(m.ogImage)}">`);
+
+  // Twitter card
+  metaTags.push(`<meta name="twitter:card" content="${m.twitterCard ?? (m.ogImage ? 'summary_large_image' : 'summary')}">`);
+  metaTags.push(`<meta name="twitter:title" content="${t}">`);
+  if (m.description || m.ogDescription) {
+    metaTags.push(`<meta name="twitter:description" content="${escapeHtml(m.ogDescription ?? m.description ?? '')}">`);
+  }
+  if (m.ogImage) metaTags.push(`<meta name="twitter:image" content="${escapeHtml(m.ogImage)}">`);
+
+  // Hint AI crawlers that this is a real first-class page.
+  metaTags.push(`<meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">`);
+
+  // Inline JSON-LD. Multiple blocks supported by passing an array.
+  let ld = '';
+  if (m.jsonLd) {
+    const blocks = Array.isArray(m.jsonLd) ? m.jsonLd : [m.jsonLd];
+    ld = blocks
+      .map((b) => `<script type="application/ld+json">${JSON.stringify(b).replace(/</g, '\\u003c')}</script>`)
+      .join('\n');
+  }
+
+  return `${metaTags.join('\n')}
 ${FONT_PRECONNECT}
-<style>${BASE_STYLE}${extraStyle}</style>`;
+<style>${BASE_STYLE}${m.extraStyle ?? ''}</style>
+${ld}`;
 }
 
-export function shell(title: string, body: string, opts: { user?: string | null; extraStyle?: string } = {}): string {
+export function shell(
+  title: string,
+  body: string,
+  opts: { user?: string | null; extraStyle?: string; meta?: HeadMeta } = {},
+): string {
   const signOut = `<form method="post" action="/signout" style="display:inline"><button type="submit" class="link">Sign out</button></form>`;
   const links = opts.user
     ? `<a href="/dashboard">Dashboard</a><a href="/pricing">Pricing</a><a href="/docs">Docs</a>${signOut}`
     : `<a href="/pricing">Pricing</a><a href="/docs">Docs</a><a class="nav__cta" href="/signin">Sign in</a>`;
+  // Merge legacy extraStyle with meta.
+  const meta: HeadMeta = { ...(opts.meta ?? {}), extraStyle: opts.extraStyle ?? opts.meta?.extraStyle ?? '' };
   return `<!doctype html>
-<html lang="en"><head>${head(title, opts.extraStyle ?? '')}</head>
+<html lang="en"><head>${head(title, meta)}</head>
 <body>
 <header class="nav"><div class="nav__inner">
   <a class="nav__brand" href="/">push<em>·</em>live</a>

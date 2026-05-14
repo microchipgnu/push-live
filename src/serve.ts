@@ -5,6 +5,7 @@ import { verifyGrantToken, loadSitePrice } from './routes/pay.ts';
 import { dispatchApp } from './apps/registry.ts';
 import { isAppEnabled } from './apps/types.ts';
 import { beaconScriptTag, recordServerHit } from './apps/analytics.ts';
+import { isAeoSidecarPath, maybeServeAeoSidecar } from './lib/aeo.ts';
 
 const NOT_FOUND_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>Not found</title>
 <style>body{font:14px/1.5 system-ui;padding:6rem 2rem;max-width:40rem;margin:auto;color:#1a1a1a}</style></head>
@@ -88,6 +89,16 @@ export async function serveSite(
     if (!site.forkable) return new Response('Not forkable', { status: 404 });
     const path = pathname.slice('/.push-live/raw/'.length);
     return serveRawFile(env, versionId, path);
+  }
+
+  // ----- AEO sidecars (robots, sitemap, llms.txt, agent-card, *.md) -----
+  // Run before access gates so AI crawlers can discover the site exists.
+  // The owner's own file at the same path always wins; auto-generation only
+  // kicks in as fallback. /llms-full.txt and .md mirrors are gated content
+  // hide their bodies for password/paywall sites.
+  if (req.method === 'GET' && isAeoSidecarPath(pathname)) {
+    const res = await maybeServeAeoSidecar(env, slug, versionId, site, pathname, env.PUBLIC_APEX_HOST, req);
+    if (res) return res;
   }
 
   // ----- Payment gate -----

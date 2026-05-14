@@ -13,6 +13,7 @@
     "db:remote": "bunx wrangler d1 migrations apply sloop-db --remote",
     "typecheck": "bunx tsc --noEmit",
     "smoke": "bash scripts/smoke.sh",
+    "aeo:check": "node scripts/aeo-check.mjs",
     "cli": "bun run src/cli/push-live.ts"
   },
   "dependencies": {

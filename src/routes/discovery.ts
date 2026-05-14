@@ -7,21 +7,69 @@ export const discoveryRouter = new Hono<{ Bindings: Env }>();
 
 discoveryRouter.get('/robots.txt', (c) => {
   const host = c.env.PUBLIC_APEX_HOST;
-  return c.text(
-    `User-agent: *
+  return c.text(buildRobotsTxt(host), 200, { 'content-type': 'text/plain; charset=utf-8' });
+});
+
+// AI crawler allowlist. Explicit Allow lines per major agent so AEO scanners
+// see them; default to wide-open for everyone else. Kept here so hosted-site
+// sidecars (src/serve.ts) can reuse the same list via buildRobotsTxt.
+export const AI_CRAWLERS = [
+  // OpenAI
+  'GPTBot',           // training crawler
+  'ChatGPT-User',     // ChatGPT browsing on behalf of a user
+  'OAI-SearchBot',    // SearchGPT index
+  // Anthropic
+  'ClaudeBot',        // training/index
+  'Claude-Web',       // browsing on behalf of a user
+  'anthropic-ai',     // legacy / catch-all
+  // Perplexity
+  'PerplexityBot',
+  'Perplexity-User',
+  // Google AI Overviews / Gemini opt-in
+  'Google-Extended',
+  // Apple Intelligence
+  'Applebot-Extended',
+  // Bytedance / Doubao
+  'Bytespider',
+  // Amazon (Alexa AI)
+  'Amazonbot',
+  // Meta AI
+  'Meta-ExternalAgent',
+  'FacebookBot',
+  // Common Crawl (used by many LLMs as training source)
+  'CCBot',
+  // Cohere
+  'cohere-ai',
+  // DuckAssist / Mistral / others
+  'DuckAssistBot',
+  'MistralAI-User',
+  'YouBot',
+];
+
+export function buildRobotsTxt(host: string): string {
+  const allowBlocks = AI_CRAWLERS.map((ua) => `User-agent: ${ua}\nAllow: /\n`).join('\n');
+  return `# push-live — AI crawlers explicitly welcomed.
+# Override this file by including your own /robots.txt in your publish.
+
+${allowBlocks}
+User-agent: *
 Allow: /
 
 Sitemap: https://${host}/sitemap.xml
-`,
-    200,
-    { 'content-type': 'text/plain; charset=utf-8' },
-  );
-});
+`;
+}
 
 discoveryRouter.get('/sitemap.xml', (c) => {
   const host = c.env.PUBLIC_APEX_HOST;
   const today = new Date().toISOString().slice(0, 10);
-  const paths = ['/', '/docs', '/pricing', '/signin', '/openapi.json', '/llms.txt', '/llms-full.txt', '/pricing.md'];
+  const paths = [
+    '/', '/docs', '/pricing', '/signin',
+    '/index.md', '/docs.md', '/pricing.md',
+    '/openapi.json', '/llms.txt', '/llms-full.txt',
+    '/docs/llms.txt', '/api/llms.txt',
+    '/.well-known/agent-card.json', '/.well-known/api-catalog',
+    '/skill.md',
+  ];
   const urls = paths.map((p) =>
     `  <url><loc>https://${host}${p}</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq></url>`,
   ).join('\n');
@@ -49,6 +97,11 @@ discoveryRouter.get('/pricing.md', (c) => {
 discoveryRouter.get('/index.md', (c) => {
   const host = c.env.PUBLIC_APEX_HOST;
   return c.text(buildIndexMd(host), 200, { 'content-type': 'text/markdown; charset=utf-8' });
+});
+
+discoveryRouter.get('/docs.md', (c) => {
+  const host = c.env.PUBLIC_APEX_HOST;
+  return c.text(buildDocsMd(host), 200, { 'content-type': 'text/markdown; charset=utf-8' });
 });
 
 // Scoped agent contexts: docs-only and api-only slices. Faster for agents that
@@ -119,6 +172,7 @@ echo "Installed. Run: push-live login"
 
 discoveryRouter.get('/icon.svg', (c) => c.text(BRAND_ICON_SVG, 200, { 'content-type': 'image/svg+xml; charset=utf-8' }));
 discoveryRouter.get('/logo.png', (c) => c.text(BRAND_LOGO_SVG, 200, { 'content-type': 'image/svg+xml; charset=utf-8' }));
+discoveryRouter.get('/og-home.png', (c) => c.text(BRAND_OG_SVG, 200, { 'content-type': 'image/svg+xml; charset=utf-8' }));
 
 discoveryRouter.get('/terms', (c) => {
   const host = c.env.PUBLIC_APEX_HOST;
@@ -450,7 +504,74 @@ fetch('/__pl/analytics/hit', { method: 'POST', body: JSON.stringify({ path: loca
 ${sections}
 `;
 
-  return shell('Docs · push-live', body, { extraStyle: docsExtra });
+  const base = `https://${host}`;
+  const description = 'push-live API reference. Three-call publish flow, drive storage for agents, on-chain payment gates, and a server-side apps layer.';
+  const faqEntries = [
+    {
+      q: 'How do I publish a static site?',
+      a: 'Three HTTP calls: POST /api/v1/publish with a file manifest, PUT the bytes to each upload URL the response gives you, then POST the finalize URL with the versionId. The site goes live at <slug>.' + host + '.',
+    },
+    {
+      q: 'How do I get an API key?',
+      a: 'POST /api/auth/agent/request-code with your email, then POST /api/auth/agent/verify-code with the code you receive. The response includes a Bearer key.',
+    },
+    {
+      q: 'What authentication does push-live accept?',
+      a: 'Three modes: anonymous (no Authorization header, 24-hour sites), Bearer API key (Authorization: Bearer <key>), and drive share tokens (Bearer tokens scoped to one drive and an optional path prefix).',
+    },
+    {
+      q: 'What are the rate limits and quotas?',
+      a: 'Anonymous: 60 publishes/hour/IP, 250 MB max file, 24-hour TTL. Free: 10 GB storage, 500 sites, 1 drive. Hobby: 500 GB, 1 000 sites, 5 drives. Developer: 2 TB, unlimited sites, 10 drives. See /pricing.md for the machine-readable table.',
+    },
+    {
+      q: 'How do paid sites work?',
+      a: 'The owner sets a price and a payout wallet. Visitors pay that wallet directly on-chain in USDC or USDT; push-live observes the transfer and grants access. push-live never holds keys or signs transactions.',
+    },
+    {
+      q: 'What is the apps subsystem?',
+      a: 'Server-side capabilities a hosted site can call from its own JavaScript. Endpoints live at /__pl/<app>/... on the site host. Today: analytics (privacy-preserving page hits and visitor counts).',
+    },
+  ];
+  const jsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'TechArticle',
+      headline: 'push-live API reference',
+      description,
+      url: `${base}/docs`,
+      inLanguage: 'en',
+      isPartOf: { '@type': 'WebSite', name: 'push-live', url: base },
+      proficiencyLevel: 'Beginner',
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: faqEntries.map((f) => ({
+        '@type': 'Question',
+        name: f.q,
+        acceptedAnswer: { '@type': 'Answer', text: f.a },
+      })),
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: base },
+        { '@type': 'ListItem', position: 2, name: 'Docs', item: `${base}/docs` },
+      ],
+    },
+  ];
+  return shell('Docs · push-live', body, {
+    extraStyle: docsExtra,
+    meta: {
+      description,
+      canonical: `${base}/docs`,
+      ogType: 'article',
+      ogImage: `${base}/og-home.png`,
+      twitterCard: 'summary_large_image',
+      jsonLd,
+    },
+  });
 }
 
 // ---------------- Builders (kept in this file to make them easy to edit) ----------------
@@ -548,6 +669,128 @@ function buildLlmsText(host: string, full: boolean): string {
     `Server-side capabilities a hosted site can call from its own JS, at /__pl/<app>/... on the site's host. No SDK, no setup.`,
     `- Analytics: POST /__pl/analytics/hit (anonymous, JSON body { path?, referrer?, screen? }), or GET /__pl/analytics/hit?path=/ as an image beacon. Daily-rotating visitor hash; no IP or UA stored. Owner reads at GET /api/v1/publish/:slug/analytics?period=7d.`,
   ]).join('\n');
+}
+
+function buildDocsMd(host: string): string {
+  return [
+    `# push-live · Docs`,
+    ``,
+    `Auto-generated from the OpenAPI spec. Compact agent context lives at /llms.txt and /llms-full.txt.`,
+    ``,
+    `- Base URL: https://${host}`,
+    `- OpenAPI: https://${host}/openapi.json`,
+    `- llms.txt: https://${host}/llms.txt · https://${host}/llms-full.txt`,
+    `- Scoped contexts: https://${host}/docs/llms.txt · https://${host}/api/llms.txt`,
+    ``,
+    `## Quick start — three calls to a live site`,
+    ``,
+    `\`\`\`bash`,
+    `# 1. Create`,
+    `curl -sS https://${host}/api/v1/publish \\`,
+    `  -H 'content-type: application/json' \\`,
+    `  -d '{"files":[{"path":"index.html","size":12,"contentType":"text/html"}]}'`,
+    ``,
+    `# 2. PUT to the upload URL from the response`,
+    ``,
+    `# 3. Finalize`,
+    `curl -sS -X POST <finalizeUrl> -d '{"versionId":"<v>"}'`,
+    `\`\`\``,
+    ``,
+    `## Authentication`,
+    ``,
+    `Three modes:`,
+    ``,
+    `1. **Anonymous** — omit \`Authorization\`. Sites expire after 24 hours.`,
+    `2. **API key** — \`Authorization: Bearer <key>\`. Mint via \`/api/auth/agent/request-code\` → \`/verify-code\`.`,
+    `3. **Drive share token** — Bearer token scoped to one drive and an optional path prefix.`,
+    ``,
+    `Optional \`X-Push-Live-Client\` header is stored as the publishing-agent identifier.`,
+    ``,
+    `\`\`\`bash`,
+    `curl -sS https://${host}/api/auth/agent/request-code -d '{"email":"you@example.com"}'`,
+    `curl -sS https://${host}/api/auth/agent/verify-code  -d '{"email":"you@example.com","code":"XXXX-YYYY"}'`,
+    `\`\`\``,
+    ``,
+    `## Limits & quotas`,
+    ``,
+    `Per-plan quotas — machine-readable table at /pricing.md.`,
+    ``,
+    `- **Anonymous** · 250 MB max file · 60 publishes/hour/IP · 24-hour site TTL · no drives.`,
+    `- **Free** · 10 GB storage · 500 sites · 500 MB max file · 1 drive · 1 custom domain · 7-day drive history.`,
+    `- **Hobby** · 500 GB storage · 1 000 sites · 2 GB max file · 5 drives · 5 domains · 30-day history.`,
+    `- **Developer** · 2 TB storage · unlimited sites · 2 GB max file · 10 drives · 20 domains · 90-day history.`,
+    `- **Variables** · 50 per account · 4 KB per value · optional allow-list for upstream proxy hosts.`,
+    `- **Proxy** · 10 MB per response · default 100 req/hour/IP per route.`,
+    `- **Apps · Analytics** · 0 / 10 k / 100 k / 1 M events per month per site · 60 hits/min/IP.`,
+    ``,
+    `## Error envelope`,
+    ``,
+    `\`\`\`json`,
+    `{`,
+    `  "error":    "Human-readable message",`,
+    `  "code":     "rate_limit_exceeded",`,
+    `  "message":  "Same as error",`,
+    `  "docs_url": "/docs#limits",`,
+    `  "retry_after": 30`,
+    `}`,
+    `\`\`\``,
+    ``,
+    `Common codes: \`invalid_request\`, \`unauthorized\`, \`not_found\`, \`conflict\`, \`gone\`, \`precondition_failed\`, \`payload_too_large\`, \`quota_exceeded\`, \`rate_limit_exceeded\`, \`payment_required\`.`,
+    ``,
+    `## Payments`,
+    ``,
+    `Site owners set a price and a payout wallet; visitors pay that wallet directly in USDC or USDT. push-live observes the on-chain transfer and grants access — it never holds keys or signs transactions.`,
+    ``,
+    `Flow:`,
+    ``,
+    `1. \`POST /api/pay/:slug/session\` → returns the address to pay and a session id.`,
+    `2. Visitor sends USDC to the returned address.`,
+    `3. \`POST /api/pay/:slug/grant\` with the txHash — or, browser-friendly, \`GET /api/pay/:slug/confirm?session=&tx=\`.`,
+    ``,
+    `## Apps`,
+    ``,
+    `Server-side capabilities a hosted site can call from its own JS. Endpoints live at \`/__pl/<app>/...\` on the site's host (slug subdomain or custom domain). No SDK, no setup — fetch the URL.`,
+    ``,
+    `### Analytics`,
+    ``,
+    `Privacy-preserving page hits and unique visitor counts per site. No external SDK; no cookies. Visitor identity is a per-day, per-site rotating hash so visits aren't linkable across days.`,
+    ``,
+    `\`\`\`js`,
+    `// In your site's JS:`,
+    `fetch('/__pl/analytics/hit', { method: 'POST', body: JSON.stringify({ path: location.pathname }) });`,
+    ``,
+    `// Or as a beacon image (works without JS):`,
+    `<img src="/__pl/analytics/hit?path=/" width="1" height="1" alt="">`,
+    `\`\`\``,
+    ``,
+    `Read the summary as the site owner:`,
+    ``,
+    `\`\`\`bash`,
+    `curl -sS https://${host}/api/v1/publish/<slug>/analytics?period=7d \\`,
+    `  -H 'authorization: Bearer <API_KEY>'`,
+    `\`\`\``,
+    ``,
+    `Caps per plan (events/month, per site): anonymous 0 · free 10 000 · hobby 100 000 · developer 1 000 000. Over-quota writes are silently dropped — the visitor never sees an error.`,
+    ``,
+    `## Frequently asked questions`,
+    ``,
+    `### Can other agents read my site?`,
+    ``,
+    `Yes — sites are public by default at \`<slug>.${host}\` and any other agent can fetch them. To restrict, add a password or a USDC paywall (both per-site config).`,
+    ``,
+    `### Can other agents read my drives?`,
+    ``,
+    `No — drives are private by default. Mint a scoped share token to grant another agent read or read-write access to a drive (or a path prefix inside one).`,
+    ``,
+    `### Does push-live take a cut of payments?`,
+    ``,
+    `Payments flow directly to the owner's wallet on-chain. push-live observes the transfer to grant access; it never holds funds.`,
+    ``,
+    `### How is this discoverable by AI search engines?`,
+    ``,
+    `Every push-live page ships /llms.txt, /llms-full.txt, /openapi.json, /sitemap.xml, /robots.txt with AI-crawler allow-lists, /.well-known/agent-card.json, and inline JSON-LD. The same machinery is available on hosted sites as sidecar endpoints.`,
+    ``,
+  ].join('\n');
 }
 
 function buildIndexMd(host: string): string {
@@ -722,6 +965,9 @@ function buildTermsHtml(host: string): string {
 // Minimal brand glyph: a tilted arrow + bracket. Small enough to inline.
 const BRAND_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none"><rect width="64" height="64" rx="12" fill="#111111"/><path d="M22 22h20v20h-4V28L26 40l-3-3 12-12H22z" fill="#F7F6F3"/></svg>`;
 const BRAND_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 64" width="280" height="64" fill="none"><rect width="64" height="64" rx="12" fill="#111111"/><path d="M22 22h20v20h-4V28L26 40l-3-3 12-12H22z" fill="#F7F6F3"/><text x="80" y="42" font-family="ui-serif, Georgia, serif" font-size="30" font-style="italic" fill="#111111" letter-spacing="-0.5">push-live</text></svg>`;
+// Open Graph card — 1200x630 (standard 1.91:1). Warm bone canvas matching
+// the marketing palette, brand mark + italic serif wordmark + tagline.
+const BRAND_OG_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" fill="none"><rect width="1200" height="630" fill="#F7F6F3"/><circle cx="1010" cy="120" r="220" fill="#E1F3FE" opacity="0.55"/><circle cx="160" cy="540" r="180" fill="#FBF3DB" opacity="0.5"/><rect x="100" y="220" width="120" height="120" rx="20" fill="#111111"/><path d="M133 252h54v54h-11v-37l-32 32-8-8 32-32h-35z" fill="#F7F6F3"/><text x="252" y="320" font-family="ui-serif, Georgia, &quot;Times New Roman&quot;, serif" font-size="120" font-style="italic" fill="#111111" letter-spacing="-3">push-live</text><text x="100" y="430" font-family="ui-sans-serif, -apple-system, Helvetica, sans-serif" font-size="36" fill="#2F3437" letter-spacing="-0.5">Three calls. One live site.</text><text x="100" y="478" font-family="ui-sans-serif, -apple-system, Helvetica, sans-serif" font-size="22" fill="#787774">Static hosting + private storage, built for agents.</text></svg>`;
 
 function buildPricingMd(host: string): string {
   const lines: string[] = [

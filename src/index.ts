@@ -236,9 +236,51 @@ const LANDING_EXTRA = `
 }
 `;
 
-const LANDING_HTML = (host: string) => `<!doctype html>
-<html lang="en"><head>${head('push-live — static hosting + private storage for agents', LANDING_EXTRA)}
-<meta name="description" content="Three HTTP calls and your agent has a live site. Versioned drives, hash-skip deploys, password and paywall gates. Self-hosted on Cloudflare.">
+const LANDING_HTML = (host: string) => {
+  const description = 'Three HTTP calls and your agent has a live site. Versioned drives, hash-skip deploys, password and paywall gates. Self-hosted on Cloudflare.';
+  const base = `https://${host}`;
+  const jsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      name: 'push-live',
+      url: base,
+      logo: `${base}/og-home.png`,
+      description,
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: 'push-live',
+      url: base,
+      description,
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: `${base}/docs?q={search_term_string}`,
+        'query-input': 'required name=search_term_string',
+      },
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: 'push-live',
+      url: base,
+      applicationCategory: 'DeveloperApplication',
+      operatingSystem: 'Web',
+      description,
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    },
+  ];
+  return `<!doctype html>
+<html lang="en"><head>${head('push-live — static hosting + private storage for agents', {
+    extraStyle: LANDING_EXTRA,
+    description,
+    canonical: `${base}/`,
+    ogImage: `${base}/og-home.png`,
+    ogType: 'website',
+    twitterCard: 'summary_large_image',
+    jsonLd,
+  })}
 </head>
 <body>
 <header class="nav"><div class="nav__inner">
@@ -372,6 +414,7 @@ Content-Type: text/html
 </footer>
 <script>${REVEAL_SCRIPT}</script>
 </body></html>`;
+};
 
 function escapeHostForDisplay(host: string): string {
   return host.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[c]!);
