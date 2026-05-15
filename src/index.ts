@@ -12,13 +12,14 @@ import { serveSite } from './serve.ts';
 import { verifyTicket } from './lib/upload-ticket.ts';
 import { runCleanup } from './cleanup.ts';
 import { withRequestLog, logLine } from './lib/log.ts';
-import { head, REVEAL_SCRIPT } from './ui/layout.ts';
+import { head, REVEAL_SCRIPT, escapeHtml } from './ui/layout.ts';
+import { loadPublicFeed, type FeedItem } from './lib/feed.ts';
 
 const app = new Hono<{ Bindings: Env }>();
 
 app.use('*', cors({ origin: '*', allowHeaders: ['authorization', 'content-type', 'x-push-live-client'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
 
-app.get('/', (c) => {
+app.get('/', async (c) => {
   // ?mode=agent returns the structured agent view (JSON pointer-set) instead
   // of the marketing HTML. Same trick as /index.md but for clients that
   // prefer a single JSON.
@@ -40,13 +41,22 @@ app.get('/', (c) => {
       agent_card: `${base}/.well-known/agent-card.json`,
       pricing: `${base}/pricing.md`,
       skill: `${base}/skill.md`,
+      feed: `${base}/api/feed`,
       bootstrap: {
         request_code: `${base}/api/auth/agent/request-code`,
         verify_code: `${base}/api/auth/agent/verify-code`,
       },
     });
   }
-  return c.html(LANDING_HTML(c.env.PUBLIC_APEX_HOST));
+  const feed = await loadPublicFeed(c.env).catch(() => ({ items: [] as FeedItem[], cachedAt: Date.now(), ttlSeconds: 60 }));
+  return c.html(LANDING_HTML(c.env.PUBLIC_APEX_HOST, feed.items));
+});
+
+app.get('/api/feed', async (c) => {
+  const feed = await loadPublicFeed(c.env);
+  return c.json(feed, 200, {
+    'cache-control': `public, max-age=${feed.ttlSeconds}`,
+  });
 });
 
 app.get('/health', (c) => c.json({ ok: true }));
@@ -228,15 +238,65 @@ const LANDING_EXTRA = `
 .tier ul{list-style:none;padding:0;margin:.3rem 0 0;color:var(--muted);font-size:13px;line-height:1.85}
 .tier ul li::before{content:"·";color:var(--muted-soft);margin-right:.5rem}
 
+.feed{display:grid;grid-template-columns:repeat(3,1fr);gap:.85rem}
+.feed__card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:1.1rem 1.2rem;display:flex;flex-direction:column;gap:.45rem;text-decoration:none;color:inherit;transition:box-shadow 220ms ease,border-color 220ms ease,transform 220ms ease}
+.feed__card:hover{box-shadow:0 2px 14px rgba(17,17,17,.05);border-color:var(--rule-strong);transform:translateY(-1px)}
+.feed__head{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.feed__card h3{margin:0;font-family:var(--sans);font-weight:600;font-size:.98rem;letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.feed__tag{flex-shrink:0}
+.feed__meta{display:flex;align-items:center;justify-content:space-between;gap:.5rem;font:12px/1 var(--mono);color:var(--muted)}
+.feed__meta code{color:var(--muted);font-size:12px}
+.feed__time{color:var(--muted-soft)}
+.feed__desc{margin:.1rem 0 0;color:var(--muted);font-size:13px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
 @keyframes drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-4%,3%,0)}}
 @media (max-width:840px){
-  .steps,.bento,.tiers{grid-template-columns:1fr}
+  .steps,.bento,.tiers,.feed{grid-template-columns:1fr}
   .bento__cell--wide,.bento__cell--tall{grid-column:auto;grid-row:auto}
   .hero h1{font-size:2.6rem}
 }
+@media (min-width:841px) and (max-width:1100px){
+  .feed{grid-template-columns:repeat(2,1fr)}
+}
 `;
 
-const LANDING_HTML = (host: string) => {
+function relativeTime(ms: number): string {
+  const diff = Math.max(0, Date.now() - ms);
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
+function renderFeedSection(host: string, items: FeedItem[]): string {
+  if (items.length === 0) return '';
+  const cards = items.map((it) => {
+    const label = it.title ?? it.slug;
+    const sub = it.handle ? `@${it.handle}` : it.slug;
+    const desc = it.description ? `<p class="feed__desc">${escapeHtml(it.description)}</p>` : '';
+    const fork = it.forkable ? `<span class="tag tag--green feed__tag">forkable</span>` : '';
+    return `
+      <a class="feed__card" href="${escapeHtml(it.url)}" target="_blank" rel="noopener">
+        <div class="feed__head">
+          <h3>${escapeHtml(label)}</h3>
+          ${fork}
+        </div>
+        <div class="feed__meta"><code>${escapeHtml(sub)}</code><span class="feed__time">${relativeTime(it.createdAt)}</span></div>
+        ${desc}
+      </a>`;
+  }).join('');
+  return `
+  <section class="reveal" style="margin-top:5rem">
+    <div class="section-head"><h2>Recently published.</h2><a class="muted" href="/api/feed">JSON feed →</a></div>
+    <div class="feed">${cards}</div>
+  </section>`;
+}
+
+const LANDING_HTML = (host: string, feedItems: FeedItem[]) => {
   const description = 'Three HTTP calls and your agent has a live site. Versioned drives, hash-skip deploys, password and paywall gates. Self-hosted on Cloudflare.';
   const base = `https://${host}`;
   const jsonLd = [
@@ -381,6 +441,8 @@ Content-Type: text/html
       </article>
     </div>
   </section>
+
+  ${renderFeedSection(host, feedItems)}
 
   <section class="reveal" style="margin-top:5rem">
     <div class="section-head"><h2>Plans.</h2><a class="muted" href="/pricing">Full table →</a></div>

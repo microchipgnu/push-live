@@ -86,6 +86,7 @@ const MetadataPatchSchema = z.object({
     .optional(),
   spaMode: z.boolean().optional(),
   forkable: z.boolean().optional(),
+  listed: z.boolean().optional(),
 });
 
 function createOrUpdate(mode: 'update' | null) {
@@ -711,6 +712,11 @@ async function patchMetadata(c: AppCtx) {
   }
   if (m.spaMode !== undefined) set('spa_mode', m.spaMode ? 1 : 0);
   if (m.forkable !== undefined) set('forkable', m.forkable ? 1 : 0);
+  if (m.listed !== undefined) {
+    set('listed', m.listed ? 1 : 0);
+    // Bust the public-feed cache so the change is visible within seconds.
+    await c.env.KV.delete('feed:public:v1').catch(() => {});
+  }
 
   binds.push(slug, u.userId);
   await c.env.DB.prepare(
