@@ -238,16 +238,30 @@ const LANDING_EXTRA = `
 .tier ul{list-style:none;padding:0;margin:.3rem 0 0;color:var(--muted);font-size:13px;line-height:1.85}
 .tier ul li::before{content:"·";color:var(--muted-soft);margin-right:.5rem}
 
-.feed{display:grid;grid-template-columns:repeat(3,1fr);gap:.85rem}
-.feed__card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:1.1rem 1.2rem;display:flex;flex-direction:column;gap:.45rem;text-decoration:none;color:inherit;transition:box-shadow 220ms ease,border-color 220ms ease,transform 220ms ease}
-.feed__card:hover{box-shadow:0 2px 14px rgba(17,17,17,.05);border-color:var(--rule-strong);transform:translateY(-1px)}
-.feed__head{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
-.feed__card h3{margin:0;font-family:var(--sans);font-weight:600;font-size:.98rem;letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.feed__tag{flex-shrink:0}
-.feed__meta{display:flex;align-items:center;justify-content:space-between;gap:.5rem;font:12px/1 var(--mono);color:var(--muted)}
-.feed__meta code{color:var(--muted);font-size:12px}
-.feed__time{color:var(--muted-soft)}
-.feed__desc{margin:.1rem 0 0;color:var(--muted);font-size:13px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.feed{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+.feed__card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column;text-decoration:none;color:inherit;transition:box-shadow 240ms ease,border-color 240ms ease,transform 240ms ease}
+.feed__card:hover{box-shadow:0 6px 24px rgba(17,17,17,.07);border-color:var(--rule-strong);transform:translateY(-2px)}
+.feed__cover{aspect-ratio:16/9;background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--rule);transition:transform 320ms ease}
+.feed__card:hover .feed__cover{transform:scale(1.035)}
+.feed__cover--c0{background:linear-gradient(135deg,var(--pale-blue-bg),#fff)}
+.feed__cover--c1{background:linear-gradient(135deg,var(--pale-green-bg),#fff)}
+.feed__cover--c2{background:linear-gradient(135deg,var(--pale-yellow-bg),#fff)}
+.feed__cover--c3{background:linear-gradient(135deg,var(--pale-red-bg),#fff)}
+.feed__cover--c4{background:linear-gradient(135deg,var(--pale-violet-bg),#fff)}
+.feed__mono{font-family:var(--serif);font-size:2.4rem;line-height:1;letter-spacing:-.02em;font-style:italic}
+.feed__cover--c0 .feed__mono{color:var(--pale-blue-fg)}
+.feed__cover--c1 .feed__mono{color:var(--pale-green-fg)}
+.feed__cover--c2 .feed__mono{color:var(--pale-yellow-fg)}
+.feed__cover--c3 .feed__mono{color:var(--pale-red-fg)}
+.feed__cover--c4 .feed__mono{color:var(--pale-violet-fg)}
+.feed__body{padding:1rem 1.15rem 1.1rem;display:flex;flex-direction:column;gap:.4rem;min-width:0}
+.feed__title{margin:0;font-family:var(--serif);font-weight:400;font-size:1.15rem;line-height:1.25;letter-spacing:-.015em;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed__desc{margin:0;color:var(--muted);font-size:13px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.feed__meta{display:flex;align-items:center;gap:.5rem;margin-top:.15rem;font:11.5px/1 var(--mono);color:var(--muted);min-width:0}
+.feed__meta code{color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.feed__dot{width:3px;height:3px;border-radius:50%;background:var(--muted-soft);flex-shrink:0}
+.feed__time{color:var(--muted-soft);flex-shrink:0}
+.feed__badge{margin-left:auto;flex-shrink:0;font:600 10px/1 var(--sans);text-transform:uppercase;letter-spacing:.06em;color:var(--pale-green-fg);background:var(--pale-green-bg);padding:.3rem .45rem;border-radius:var(--radius-pill)}
 
 @keyframes drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-4%,3%,0)}}
 @media (max-width:840px){
@@ -272,21 +286,46 @@ function relativeTime(ms: number): string {
   return `${d}d ago`;
 }
 
+function feedPalette(seed: string): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return h % 5;
+}
+
+function feedMonogram(label: string): string {
+  const parts = label.trim().split(/[\s\-_.]+/).filter(Boolean);
+  const chars = parts.length >= 2 ? parts[0][0] + parts[1][0] : label.trim().slice(0, 2);
+  return escapeHtml(chars.toUpperCase());
+}
+
 function renderFeedSection(host: string, items: FeedItem[]): string {
   if (items.length === 0) return '';
   const cards = items.map((it) => {
     const label = it.title ?? it.slug;
     const sub = it.handle ? `@${it.handle}` : it.slug;
     const desc = it.description ? `<p class="feed__desc">${escapeHtml(it.description)}</p>` : '';
-    const fork = it.forkable ? `<span class="tag tag--green feed__tag">forkable</span>` : '';
+    const fork = it.forkable ? `<span class="feed__badge">forkable</span>` : '';
+    const pal = feedPalette(it.slug);
+    let cover: string;
+    if (it.ogImagePath) {
+      const src = escapeHtml(it.url + it.ogImagePath.replace(/^\//, ''));
+      cover = `<div class="feed__cover" style="background-image:url('${src}')"></div>`;
+    } else {
+      cover = `<div class="feed__cover feed__cover--c${pal}"><span class="feed__mono">${feedMonogram(label)}</span></div>`;
+    }
     return `
       <a class="feed__card" href="${escapeHtml(it.url)}" target="_blank" rel="noopener">
-        <div class="feed__head">
-          <h3>${escapeHtml(label)}</h3>
-          ${fork}
+        ${cover}
+        <div class="feed__body">
+          <h3 class="feed__title">${escapeHtml(label)}</h3>
+          ${desc}
+          <div class="feed__meta">
+            <code>${escapeHtml(sub)}</code>
+            <span class="feed__dot"></span>
+            <span class="feed__time">${relativeTime(it.createdAt)}</span>
+            ${fork}
+          </div>
         </div>
-        <div class="feed__meta"><code>${escapeHtml(sub)}</code><span class="feed__time">${relativeTime(it.createdAt)}</span></div>
-        ${desc}
       </a>`;
   }).join('');
   return `
