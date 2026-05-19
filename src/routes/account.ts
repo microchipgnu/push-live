@@ -249,14 +249,14 @@ accountRouter.post('/api/v1/domains', auth({ required: true }), async (c) => {
   }
 
   // Provision via Cloudflare for SaaS — required for SSL + edge routing.
-  // If CLOUDFLARE_API_TOKEN is unset we fall back to a verification stub so
+  // If CF_SAAS_API_TOKEN is unset we fall back to a verification stub so
   // the dashboard flow still works in local dev.
   let cfHostnameId: string | null = existing?.cf_hostname_id ?? null;
   let records: Array<{ type: string; name: string; value: string }> = [];
   let cfStatus: string = 'pending';
   let cfSslStatus: string | null = 'pending';
 
-  if (c.env.CLOUDFLARE_API_TOKEN && c.env.CLOUDFLARE_ACCOUNT_ID) {
+  if (c.env.CF_SAAS_API_TOKEN && c.env.CLOUDFLARE_ZONE_ID) {
     try {
       if (!cfHostnameId) {
         const created = await addCustomHostname(c.env, domain);
@@ -318,7 +318,7 @@ accountRouter.post('/api/v1/domains/:domain/sync', auth({ required: true }), asy
   ).bind(domain, u.userId).first<{ cf_hostname_id: string | null }>();
   if (!row) return c.json(errBody('not_found', 'Domain not found'), 404);
   if (!row.cf_hostname_id) return c.json(errBody('precondition_failed', 'No Cloudflare hostname id; reprovision via POST /api/v1/domains'), 412);
-  if (!c.env.CLOUDFLARE_API_TOKEN) return c.json(errBody('precondition_failed', 'CLOUDFLARE_API_TOKEN not configured'), 412);
+  if (!c.env.CF_SAAS_API_TOKEN) return c.json(errBody('precondition_failed', 'CF_SAAS_API_TOKEN not configured'), 412);
   try {
     const fresh = await getCustomHostname(c.env, row.cf_hostname_id);
     await c.env.DB.prepare(
@@ -354,7 +354,7 @@ accountRouter.delete('/api/v1/domains/:domain', auth({ required: true }), async 
   const row = await c.env.DB.prepare(
     `SELECT cf_hostname_id FROM domains WHERE domain = ?1 AND owner_user_id = ?2`,
   ).bind(domain, u.userId).first<{ cf_hostname_id: string | null }>();
-  if (row?.cf_hostname_id && c.env.CLOUDFLARE_API_TOKEN) {
+  if (row?.cf_hostname_id && c.env.CF_SAAS_API_TOKEN) {
     try { await deleteCustomHostname(c.env, row.cf_hostname_id); }
     catch (e) { console.error('[domains] cf delete failed', e); }
   }

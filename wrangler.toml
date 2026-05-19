@@ -8,6 +8,8 @@ PUBLIC_APEX_HOST = "push-live.com"
 R2_ACCOUNT_ID = "97c691498b367789962e77080bf302c0"
 R2_BUCKET = "sloop-sites"
 EMAIL_FROM = "push-live <noreply@push-live.com>"
+# Zone for Cloudflare-for-SaaS custom hostnames (cf-saas.ts). Not sensitive.
+CLOUDFLARE_ZONE_ID = "939f5769d5ce67c9aeb626d2b7e04f66"
 
 [triggers]
 crons = ["*/10 * * * *"]

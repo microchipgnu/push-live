@@ -530,7 +530,7 @@ ${renderAppsCard(data)}
   <input type="text" name="domain" placeholder="example.com" style="flex:1;max-width:18rem">
   <button type="submit">Add</button>
 </form>
-<p class="muted" style="margin-top:.6rem">For SSL + edge routing, hit <code>POST /api/v1/domains</code> with <code>CLOUDFLARE_API_TOKEN</code> set.</p>
+<p class="muted" style="margin-top:.6rem">For SSL + edge routing, hit <code>POST /api/v1/domains</code> with <code>CF_SAAS_API_TOKEN</code> set.</p>
 </div>
 
 <div class="card">

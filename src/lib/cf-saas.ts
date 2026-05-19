@@ -4,8 +4,8 @@
 import type { Env } from '../types.ts';
 
 type CFEnv = Env & {
-  CLOUDFLARE_ACCOUNT_ID?: string;
-  CLOUDFLARE_API_TOKEN?: string;
+  CLOUDFLARE_ZONE_ID?: string;
+  CF_SAAS_API_TOKEN?: string;
 };
 
 export type CustomHostnameStatus =
@@ -37,16 +37,17 @@ export type CustomHostnameRow = {
 
 const API = 'https://api.cloudflare.com/client/v4';
 
-function requireCfCreds(env: CFEnv): { accountId: string; token: string } {
-  if (!env.CLOUDFLARE_ACCOUNT_ID || !env.CLOUDFLARE_API_TOKEN) {
-    throw new Error('CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be configured');
+function requireCfCreds(env: CFEnv): { zoneId: string; token: string } {
+  if (!env.CLOUDFLARE_ZONE_ID || !env.CF_SAAS_API_TOKEN) {
+    throw new Error('CLOUDFLARE_ZONE_ID and CF_SAAS_API_TOKEN must be configured');
   }
-  return { accountId: env.CLOUDFLARE_ACCOUNT_ID, token: env.CLOUDFLARE_API_TOKEN };
+  return { zoneId: env.CLOUDFLARE_ZONE_ID, token: env.CF_SAAS_API_TOKEN };
 }
 
 async function cfFetch(env: CFEnv, path: string, init: RequestInit = {}): Promise<unknown> {
-  const { accountId, token } = requireCfCreds(env);
-  const url = `${API}/accounts/${accountId}${path}`;
+  // Cloudflare for SaaS custom hostnames are zone-scoped, not account-scoped.
+  const { zoneId, token } = requireCfCreds(env);
+  const url = `${API}/zones/${zoneId}${path}`;
   const res = await fetch(url, {
     ...init,
     headers: {

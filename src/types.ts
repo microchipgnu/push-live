@@ -25,8 +25,12 @@ export type Env = {
   RESEND_API_KEY?: string;
   MAILCHANNELS_API_KEY?: string;
   EMAIL_FROM?: string;
-  CLOUDFLARE_ACCOUNT_ID?: string;       // for SaaS custom hostnames
-  CLOUDFLARE_API_TOKEN?: string;        // secret with Custom Hostnames Write
+  CLOUDFLARE_ACCOUNT_ID?: string;       // legacy; no longer read by cf-saas
+  CLOUDFLARE_ZONE_ID?: string;          // push-live.com zone for SaaS custom hostnames
+  // Runtime token for cf-saas only (Zone SSL & Certificates: Edit). Deliberately
+  // NOT named CLOUDFLARE_API_TOKEN — that name is the GitHub Actions deploy token
+  // (account-scoped) and the two must never be conflated.
+  CF_SAAS_API_TOKEN?: string;
   TEMPO_RPC_URL?: string;               // EVM JSON-RPC endpoint
   TEMPO_USDC_CONTRACT?: string;
   TEMPO_USDT_CONTRACT?: string;
